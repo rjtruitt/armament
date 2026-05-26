@@ -1,8 +1,8 @@
 import { ConfigPane, registerSchema } from '../tui/index.js';
 import { UserConfig } from '../config/index.js';
 
-/** Register session schemas.
- * @param {ConfigPane} pane - Description of pane.
+/** Register the session configuration panel (streaming, auto-save, prompt caching, etc.).
+ * @param {ConfigPane} pane - The ConfigPane instance to register schemas on.
  */
 export function registerSessionSchemas(pane: ConfigPane): void {
   const cfg = UserConfig.instance();
@@ -51,8 +51,8 @@ export function registerSessionSchemas(pane: ConfigPane): void {
   });
 }
 
-/** Register context schemas.
- * @param {ConfigPane} pane - Description of pane.
+/** Register the context window configuration panel (max tokens, compaction, snapshots).
+ * @param {ConfigPane} pane - The ConfigPane instance to register schemas on.
  */
 export function registerContextSchemas(pane: ConfigPane): void {
   const cfg = UserConfig.instance();
@@ -83,8 +83,8 @@ export function registerContextSchemas(pane: ConfigPane): void {
   });
 }
 
-/** Register workspace schemas.
- * @param {ConfigPane} pane - Description of pane.
+/** Register the workspace configuration panel (paths, git auto-commit, file watcher, encoding).
+ * @param {ConfigPane} pane - The ConfigPane instance to register schemas on.
  */
 export function registerWorkspaceSchemas(pane: ConfigPane): void {
   const cfg = UserConfig.instance();
@@ -115,8 +115,8 @@ export function registerWorkspaceSchemas(pane: ConfigPane): void {
   });
 }
 
-/** Register display schemas.
- * @param {ConfigPane} pane - Description of pane.
+/** Register the display configuration panel (theme, thinking/tool visibility, compact mode, fonts).
+ * @param {ConfigPane} pane - The ConfigPane instance to register schemas on.
  */
 export function registerDisplaySchemas(pane: ConfigPane): void {
   const cfg = UserConfig.instance();

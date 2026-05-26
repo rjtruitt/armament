@@ -134,14 +134,15 @@ export class McpManager {
 
         try {
           await mcpClient.connect(mcpTransport);
-        } catch (authErr: any) {
+        } catch (authErr: unknown) {
           this.callbacks.writeMessage('system', 'mcp',
-            `${name} connect error: [${authErr.constructor?.name}] ${authErr.message}`, '#logs');
-          const isAuthErr = authErr.constructor?.name === 'UnauthorizedError'
+            `${name} connect error: [${authErr instanceof Error ? authErr.constructor?.name : typeof authErr}] ${authErr instanceof Error ? authErr.message : String(authErr)}`, '#logs');
+          const isAuthErr = authErr instanceof Error
+            && (authErr.constructor?.name === 'UnauthorizedError'
             || authErr.constructor?.name === 'StreamableHTTPError'
             || authErr.message?.includes('Unauthorized')
             || authErr.message?.includes('401')
-            || authErr.code === 401;
+            || (authErr as any).code === 401);
           if (isAuthErr && opts?.nonInteractive) {
             throw new Error(`${name} requires authentication`);
           } else if (isAuthErr) {
@@ -187,9 +188,9 @@ export class McpManager {
           this.callbacks.rebuildMcpMenu(cfgs.map(c => c.name), cfgs);
           return;
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         this.callbacks.writeMessage('system', 'mcp',
-          `SDK connect failed: ${e.message}`, '#logs');
+          `SDK connect failed: ${e instanceof Error ? e.message : String(e)}`, '#logs');
         tools = this.toolExec.discoverToolsForServer(name, config);
       }
     } else {
@@ -265,8 +266,8 @@ export class McpManager {
 
       try {
         await client.connect(transport);
-      } catch (authErr: any) {
-        if (authErr.constructor?.name === 'UnauthorizedError') {
+      } catch (authErr: unknown) {
+        if (authErr instanceof Error && authErr.constructor?.name === 'UnauthorizedError') {
           const code = await authProvider.waitForAuthCode();
           await transport.finishAuth(code);
           const freshTransport = new StreamableHTTPClientTransport(
@@ -297,7 +298,7 @@ export class McpManager {
       this.mcpServers.set(name, { ...server, status: 'connected', tools, client, transport });
       this.toolExec.injectMcpToolsIntoAgents(name, tools, server.config);
       this.persistMcpConfig();
-    } catch (e: any) {
+    } catch (e: unknown) {
       await this.connectMcp(name, server.config);
     }
   }
@@ -314,11 +315,11 @@ export class McpManager {
       this.callbacks.stopThinking();
       this.callbacks.writeMessage('system', '*',
         `"${serverName}" authenticated (${this.mcpServers.get(serverName)?.tools.length ?? 0} tools)`);
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       this.callbacks.stopThinking();
       this.mcpServers.set(serverName, { ...server, status: 'needs_auth' });
       this.callbacks.writeMessage('system', 'error',
-        `Auth failed for ${serverName}: ${err.message}`, '#control');
+        `Auth failed for ${serverName}: ${err instanceof Error ? err.message : String(err)}`, '#control');
     });
   }
 

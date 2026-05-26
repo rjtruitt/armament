@@ -52,8 +52,8 @@ and optionally the full message history (may be large).`;
       try {
         const raw = readFileSync(statePath, 'utf-8');
         state = JSON.parse(raw);
-      } catch (e: any) {
-        stateErr = `Failed to parse state file: ${e.message}`;
+      } catch (e: unknown) {
+        stateErr = `Failed to parse state file: ${e instanceof Error ? e.message : String(e)}`;
       }
     } else {
       stateErr = `No session file found at ${statePath}`;
@@ -66,8 +66,8 @@ and optionally the full message history (may be large).`;
     if (existsSync(notesPath)) {
       try {
         notes = readFileSync(notesPath, 'utf-8');
-      } catch (e: any) {
-        notesErr = `Failed to read notes.md: ${e.message}`;
+      } catch (e: unknown) {
+        notesErr = `Failed to read notes.md: ${e instanceof Error ? e.message : String(e)}`;
       }
     } else {
       notesErr = `No notes.md found for ${chName}`;

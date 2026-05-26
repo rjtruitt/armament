@@ -1,12 +1,12 @@
 import { dirname } from 'path';
 
-/** Interface for PermissionRequest.
- * @property {string} id - Description of id.
- * @property {string} path - Description of path.
- * @property {string} originalPath - Description of originalPath.
- * @property {string} tool - Description of tool.
- * @property {string} channel - Description of channel.
- * @property {number} createdAt - Description of createdAt.
+/** A pending permission request awaiting user approval or denial.
+ * @property {string} id - Unique identifier for this permission request.
+ * @property {string} path - Filesystem path the tool is attempting to access.
+ * @property {string} [originalPath] - The original path before symlink resolution, if different.
+ * @property {string} tool - Name of the tool requesting access.
+ * @property {string} channel - Channel identifier where the request originated.
+ * @property {number} createdAt - Unix timestamp (ms) when the request was created.
  */
 export interface PermissionRequest {
   id: string;
@@ -20,10 +20,10 @@ export interface PermissionRequest {
 
 const remembered = new Map<string, Set<string>>();
 
-/** Is remembered.
- * @param {string} channel - Description of channel.
- * @param {string} path - Description of path.
- * @returns {boolean} - Description of return value.
+/** Check whether a path has been previously remembered (approved) for a channel.
+ * @param {string} channel - The channel to check remembered permissions for.
+ * @param {string} path - The filesystem path to check.
+ * @returns {boolean} - True if the path (or any parent) was previously approved for this channel.
  */
 export function isRemembered(channel: string, path: string): boolean {
   const set = remembered.get(channel);
@@ -159,8 +159,8 @@ export class PermissionStore {
 }
 
 const KEY = '__armamentPermissionStore';
-/** Get permission store.
- * @returns {PermissionStore} - Description of return value.
+/** Get the singleton PermissionStore instance, creating it if needed.
+ * @returns {PermissionStore} - The global PermissionStore singleton.
  */
 export function getPermissionStore(): PermissionStore {
   const g = globalThis as any;

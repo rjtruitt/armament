@@ -177,8 +177,9 @@ Only works on workers that are still running (status: "thinking" or "tool_use" o
     try {
       const response = await this.runtime.sendWorkerMessage(workerId, message);
       return { success: true, data: { workerId, response } };
-    } catch (err: any) {
-      return { success: false, error: { message: err.message, code: 'SEND_FAILED' } };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: { message: msg, code: 'SEND_FAILED' } };
     }
   }
 }

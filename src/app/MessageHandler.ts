@@ -111,7 +111,7 @@ export async function handleUserMessage(
       await deps.getStreamRouter().routeStream(agent, augmentedInput, { channel: activeChannel, nick }, () => deps.getInterrupted(activeChannel));
       deps.setProcessing(activeChannel, false);
       return undefined;
-    } catch (err: any) {
+    } catch (err: unknown) {
       logError('repl', `Stream error on ${activeChannel}`, err);
       deps.setProcessing(activeChannel, false);
       const tui = deps.getTui();
@@ -121,8 +121,9 @@ export async function handleUserMessage(
         deps.handleAuthError(activeChannel, agent, err);
         return '';
       }
-      tui?.writeMessage('system', 'err', `${activeChannel} error: ${err.message}`, '#logs');
-      return `Error: ${err.message}`;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      tui?.writeMessage('system', 'err', `${activeChannel} error: ${errMsg}`, '#logs');
+      return `Error: ${errMsg}`;
     }
   }
 

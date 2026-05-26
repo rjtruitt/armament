@@ -1,9 +1,9 @@
 import type { ProviderPool, AskUserHandler } from '../providers/index.js';
 import type { TuiRenderer } from './TuiRenderer.js';
 
-/** Interface for AuthManagerDeps.
- * @property {ProviderPool} providerPool - Description of providerPool.
- * @property {AskUserHandler} askUserHandler - Description of askUserHandler.
+/** Dependencies injected into AuthManager for provider pool access and user interaction.
+ * @property {ProviderPool} providerPool - Pool of available provider instances.
+ * @property {AskUserHandler} askUserHandler - Handler for prompting the user with authentication choices.
  */
 export interface AuthManagerDeps {
   providerPool: ProviderPool;

@@ -18,7 +18,7 @@ export class BaseToolAdapter implements ITool {
   /**
    * schema property.
    */
-  readonly schema: z.ZodType<any>;
+  readonly schema: z.ZodType<unknown>;
 
   private _baseTool: BaseTool;
 
@@ -26,14 +26,14 @@ export class BaseToolAdapter implements ITool {
     this._baseTool = baseTool;
     this.name = baseTool.name;
     this.description = baseTool.description;
-    this.schema = z.record(z.any()).describe(baseTool.description);
+    this.schema = z.record(z.unknown()).describe(baseTool.description);
   }
 
   /**
    * Execute.
    */
   async execute(args: unknown, context: ToolContext): Promise<ToolResult> {
-    const params = (args ?? {}) as Record<string, any>;
+    const params = (args ?? {}) as Record<string, unknown>;
     const errors = this._baseTool.validate(params);
     if (errors.length > 0) {
       return { success: false, error: { message: errors.join('; '), code: 'VALIDATION_ERROR' } };
@@ -93,8 +93,11 @@ Categories include: pentest, git, shell, web, data, infra, monitoring (varies by
    * Execute.
    */
   async execute(args: unknown, _context: ToolContext): Promise<ToolResult> {
-    const params = (args ?? {}) as Record<string, any>;
-    const { categories, tools, unload_categories, list } = params;
+    const params = (args ?? {}) as Record<string, unknown>;
+    const categories = params.categories as string[] | undefined;
+    const tools = params.tools as string[] | undefined;
+    const unload_categories = params.unload_categories as string[] | undefined;
+    const list = params.list as boolean | undefined;
 
     if (list || (!categories && !tools && !unload_categories)) {
       const summaries = this._catalog.getCategorySummaries();

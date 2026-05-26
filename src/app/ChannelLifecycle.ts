@@ -519,10 +519,11 @@ export class ChannelLifecycle {
       this.deps.callbacks.writeMessage('system', '*', `Switched to ${provConfig.name ?? provConfig.type}/${newModel}`, channelName);
       this.deps.callbacks.writeMessage('system', 'conn',
         `${channelName} model switch → ${provConfig.name ?? provConfig.type}/${newModel}`, '#logs');
-    } catch (err: any) {
-      this.deps.callbacks.writeMessage('system', 'error', `Failed to switch model: ${err.message}`, channelName);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.deps.callbacks.writeMessage('system', 'error', `Failed to switch model: ${msg}`, channelName);
       this.deps.callbacks.writeMessage('system', 'err',
-        `${channelName} model switch failed: ${err.message}`, '#logs');
+        `${channelName} model switch failed: ${msg}`, '#logs');
     }
   }
 

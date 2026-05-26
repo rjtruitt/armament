@@ -78,12 +78,12 @@ export interface TuiRendererOptions {
 /** Backward-compat alias. */
 export type TuiModeOptions = TuiRendererOptions;
 
-/** Interface for ControlDashboardData.
- * @property {Array<{ name: string; status: string; tokens: number; contextPercent: number }>} channels - Description of channels.
- * @property {number} totalTokens - Description of totalTokens.
- * @property {number} totalCost - Description of totalCost.
- * @property {number} activeWorkers - Description of activeWorkers.
- * @property {number} uptime - Description of uptime.
+/** Data displayed in the TUI control dashboard panel.
+ * @property {Array<{ name: string; status: string; tokens: number; contextPercent: number }>} channels - Per-channel status summary with token and context usage.
+ * @property {number} totalTokens - Aggregate token usage across all channels.
+ * @property {number} totalCost - Aggregate accumulated cost across all channels.
+ * @property {number} activeWorkers - Number of currently active worker agents.
+ * @property {number} uptime - Session uptime in seconds.
  */
 export interface ControlDashboardData {
   channels: Array<{ name: string; status: string; tokens: number; contextPercent: number }>;

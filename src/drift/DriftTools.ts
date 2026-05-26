@@ -34,8 +34,8 @@ export class DriftStatusTool implements ITool {
           paths: stats.paths,
         },
       };
-    } catch (e: any) {
-      return { success: false, error: { message: e.message } };
+    } catch (e: unknown) {
+      return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
     }
   }
 }
@@ -62,8 +62,8 @@ export class DriftSnapshotTool implements ITool {
     try {
       const snapshot = await this.manager.snapshot(this.channel, path, reason, 'manual');
       return { success: true, data: snapshot };
-    } catch (e: any) {
-      return { success: false, error: { message: e.message } };
+    } catch (e: unknown) {
+      return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
     }
   }
 }
@@ -83,8 +83,8 @@ export class DriftSnapshotListTool implements ITool {
     try {
       const snapshots = await this.manager.listSnapshots(this.channel, path);
       return { success: true, data: snapshots };
-    } catch (e: any) {
-      return { success: false, error: { message: e.message } };
+    } catch (e: unknown) {
+      return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
     }
   }
 }
@@ -110,8 +110,8 @@ export class DriftRollbackTool implements ITool {
         return { success: true, data: `Rolled back snapshot ${id}` };
       }
       return { success: false, error: { message: `Snapshot "${id}" not found or content missing` } };
-    } catch (e: any) {
-      return { success: false, error: { message: e.message } };
+    } catch (e: unknown) {
+      return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
     }
   }
 }
@@ -135,8 +135,8 @@ export class DriftPruneTool implements ITool {
       if (days) msg += ` (older than ${days} days)`;
       if (staleOnly) msg += ` (stale paths only)`;
       return { success: true, data: msg };
-    } catch (e: any) {
-      return { success: false, error: { message: e.message } };
+    } catch (e: unknown) {
+      return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
     }
   }
 }

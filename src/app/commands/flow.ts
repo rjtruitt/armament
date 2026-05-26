@@ -1,8 +1,8 @@
 import type { CommandRegistration, CommandContext } from '../CommandDispatch.js';
 import type { FlowRuntime } from '../FlowRuntime.js';
 
-/** Get flow commands.
- * @param {FlowRuntime} flowRuntime - Description of flow runtime.
+/** Get the /flow command registrations (flow, flow run, flow test).
+ * @param {FlowRuntime} flowRuntime - The FlowRuntime instance for executing and testing workflows.
  */
 export function getFlowCommands(flowRuntime: FlowRuntime): CommandRegistration[] {
   return [

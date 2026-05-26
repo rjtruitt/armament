@@ -3,12 +3,7 @@ export type PermissionScope = 'session' | 'workspace' | 'global';
 /** Type union for PermissionAction: read, write, execute, deny. */
 export type PermissionAction = 'read' | 'write' | 'execute' | 'deny';
 
-/** Interface for IPathPermission.
- * @property {string} path - Description of path.
- * @property {PermissionAction} action - Description of action.
- * @property {boolean} recursive - Description of recursive.
- * @property {PermissionScope} scope - Description of scope.
- */
+/** Maps a filesystem path to its allowed access level. */
 export interface IPathPermission {
   path: string;
   action: PermissionAction;
@@ -16,14 +11,7 @@ export interface IPathPermission {
   scope: PermissionScope;
 }
 
-/** Interface for IBudgetConfig.
- * @property {number} sessionLimit - Description of sessionLimit.
- * @property {number} perAgentLimit - Description of perAgentLimit.
- * @property {number} perMinuteLimit - Description of perMinuteLimit.
- * @property {number} warnPercent - Description of warnPercent.
- * @property {number} freezePercent - Description of freezePercent.
- * @property {string} currency - Description of currency.
- */
+/** Cost budget limits with warning and freeze thresholds. */
 export interface IBudgetConfig {
   sessionLimit: number | 'unlimited';
   perAgentLimit?: number;
@@ -33,15 +21,7 @@ export interface IBudgetConfig {
   currency: string;
 }
 
-/** Interface for IProviderEntry.
- * @property {string} id - Description of id.
- * @property {string} type - Description of type.
- * @property {string} models - Description of models.
- * @property {string} apiKeyRef - Description of apiKeyRef.
- * @property {string} endpoint - Description of endpoint.
- * @property {boolean} available - Description of available.
- * @property {number} priority - Description of priority.
- */
+/** Registered LLM provider entry with credentials and model list. */
 export interface IProviderEntry {
   id: string;
   type: string;
@@ -52,12 +32,7 @@ export interface IProviderEntry {
   priority: number;
 }
 
-/** Interface for INodeConfig.
- * @property {string} id - Description of id.
- * @property {string} host - Description of host.
- * @property {string} capabilities - Description of capabilities.
- * @property {number} maxAgents - Description of maxAgents.
- */
+/** Remote agent node configuration for distributed setups. */
 export interface INodeConfig {
   id: string;
   host: string;
@@ -66,16 +41,7 @@ export interface INodeConfig {
   maxAgents: number;
 }
 
-/** Interface for ISessionConfigMenu.
- * @property {IWorkspaceConfig} workspace - Description of workspace.
- * @property {IBudgetConfig} budget - Description of budget.
- * @property {string} defaultModel - Description of defaultModel.
- * @property {IProviderEntry} providers - Description of providers.
- * @property {IMcpServerEntry} mcpServers - Description of mcpServers.
- * @property {string} denyPaths - Description of denyPaths.
- * @property {INodeConfig} nodes - Description of nodes.
- * @property {string} theme - Description of theme.
- */
+/** Full session configuration as shown in the session config menu. */
 export interface ISessionConfigMenu {
   workspace: IWorkspaceConfig;
   budget: IBudgetConfig;
@@ -87,21 +53,14 @@ export interface ISessionConfigMenu {
   theme: string;
 }
 
-/** Interface for IWorkspaceConfig.
- * @property {string} root - Description of root.
- * @property {IPathPermission} permissions - Description of permissions.
- * @property {boolean} inheritToAgents - Description of inheritToAgents.
- */
+/** Workspace root and permission rules. */
 export interface IWorkspaceConfig {
   root: string;
   permissions: IPathPermission[];
   inheritToAgents: boolean;
 }
 
-/** Interface for IMcpServerEntry.
- * @property {string} name - Description of name.
- * @property {number} toolCount - Description of toolCount.
- */
+/** Registered MCP server with connection status. */
 export interface IMcpServerEntry {
   name: string;
   status: 'connected' | 'failed' | 'disabled';

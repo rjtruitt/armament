@@ -111,9 +111,9 @@ async function initialize(): Promise<void> {
 
     log('info', 'thread', `Agent initialized: ${config.channelName} (${config.provider.type}/${config.provider.model})`);
     send({ type: 'ready' });
-  } catch (err: any) {
-    log('error', 'thread', `Failed to initialize: ${err.message}`, err.stack);
-    send({ type: 'error', message: `Thread init failed: ${err.message}`, fatal: true });
+  } catch (err: unknown) {
+    log('error', 'thread', `Failed to initialize: ${err instanceof Error ? err.message : String(err)}`, err instanceof Error ? err.stack : undefined);
+    send({ type: 'error', message: `Thread init failed: ${err instanceof Error ? err.message : String(err)}`, fatal: true });
     process.exit(1);
   }
 }
@@ -137,9 +137,9 @@ async function handleSendMessage(id: string, input: string): Promise<void> {
       send({ type: 'stream_chunk', chunk: { kind: 'text', text: response } });
       send({ type: 'stream_chunk', chunk: { kind: 'done' } });
     }
-  } catch (err: any) {
-    log('error', 'thread', `sendMessage error: ${err.message}`, err.stack);
-    send({ type: 'error', message: err.message, code: err.code });
+  } catch (err: unknown) {
+    log('error', 'thread', `sendMessage error: ${err instanceof Error ? err.message : String(err)}`, err instanceof Error ? err.stack : undefined);
+    send({ type: 'error', message: err instanceof Error ? err.message : String(err), code: err instanceof Error && 'code' in err ? (err as any).code : undefined });
   }
 
   // Send updated context usage

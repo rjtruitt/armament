@@ -110,8 +110,8 @@ export function resumeAgentTurn(channel: string, deps: ResumeAgentDeps): void {
           }
         }
       }
-    } catch (err: any) {
-      tui?.writeMessage('system', '*', `Resume error: ${err.message}`, channel);
+    } catch (err: unknown) {
+      tui?.writeMessage('system', '*', `Resume error: ${err instanceof Error ? err.message : String(err)}`, channel);
     } finally {
       deps.setProcessing(channel, false);
       deps.refreshProviderStats();

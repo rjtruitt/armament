@@ -90,11 +90,13 @@ Timeout is 30 seconds.`;
         return { success: true, data: text.slice(0, MAX_OUTPUT_BYTES) + `\n\n... (truncated at 100KB, full response was ${Math.round(text.length / 1024)}KB)` };
       }
       return { success: true, data: text };
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const errName = err instanceof Error ? err.name : undefined;
+      if (errName === 'AbortError') {
         return { success: false, error: { message: `Request timed out after 30s: ${url}`, code: 'TIMEOUT' } };
       }
-      return { success: false, error: { message: err.message, code: 'FETCH_ERROR' } };
+      return { success: false, error: { message: msg, code: 'FETCH_ERROR' } };
     }
   }
 }
@@ -145,8 +147,9 @@ Defaults to current directory if path is omitted. Capped at 500 entries.`;
     if (rawPath) {
       try {
         dir = this.workspace ? await scopePath(rawPath, this.workspace!, this.name, this.channel) : rawPath;
-      } catch (e: any) {
-        return { success: false, error: { message: e.message, code: 'LIST_ERROR' } };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { success: false, error: { message: msg, code: 'LIST_ERROR' } };
       }
     } else {
       dir = cwd;
@@ -175,8 +178,9 @@ Defaults to current directory if path is omitted. Capped at 500 entries.`;
       }
       const truncated = lines.length > 500 ? lines.slice(0, 500).join('\n') + `\n\n... (${lines.length} total, showing first 500)` : lines.join('\n');
       return { success: true, data: `${lines.length} file${lines.length > 1 ? 's' : ''}:\n${truncated}` };
-    } catch (err: any) {
-      return { success: false, error: { message: err.message, code: 'LIST_ERROR' } };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: { message: msg, code: 'LIST_ERROR' } };
     }
   }
 }
@@ -240,8 +244,9 @@ Input types:
     try {
       const response = await this.handler.ask(question, options, this.sourceChannel, input_type);
       return { success: true, data: response };
-    } catch (err: any) {
-      return { success: false, error: { message: err.message, code: 'ASK_FAILED' } };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: { message: msg, code: 'ASK_FAILED' } };
     }
   }
 }

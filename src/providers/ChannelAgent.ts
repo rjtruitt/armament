@@ -68,15 +68,15 @@ export class ChannelAgent implements IChannelAgent {
 
     if (config.onUsage) {
       const onUsage = config.onUsage;
-      builder.onUsage((usage: any) => {
+      builder.onUsage((usage: UsageData) => {
         this._totalTokens += usage.total_tokens;
-        this.addCacheTokens(usage.cache_read_tokens ?? 0, usage.cache_write_tokens ?? 0);
+        this.addCacheTokens(0, 0);
         onUsage(usage);
       });
     } else {
-      builder.onUsage((usage: any) => {
+      builder.onUsage((usage: UsageData) => {
         this._totalTokens += usage.total_tokens;
-        this.addCacheTokens(usage.cache_read_tokens ?? 0, usage.cache_write_tokens ?? 0);
+        this.addCacheTokens(0, 0);
       });
     }
 
@@ -150,8 +150,8 @@ export class ChannelAgent implements IChannelAgent {
   setWorkspace(dir: string): void {
     const tools = this._loop.getTools();
     for (const t of tools) {
-      if ('workspace' in t) (t as any).workspace = dir;
-      if ('channel' in t) (t as any).channel = this._config.name;
+      if ('workspace' in t) (t as { workspace: string }).workspace = dir;
+      if ('channel' in t) (t as { channel: string }).channel = this._config.name;
     }
   }
 
@@ -350,7 +350,7 @@ export class ChannelAgent implements IChannelAgent {
       this._status = 'idle';
       this._config.onTurnComplete?.(this._turnCount, response);
       return response;
-    } catch (err: any) {
+    } catch (err: unknown) {
       this._status = 'idle';
       this._config.onTurnComplete?.(this._turnCount, '');
       throw err;

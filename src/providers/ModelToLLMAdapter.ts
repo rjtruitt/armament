@@ -34,10 +34,38 @@ export interface SimpleLLMResponse {
   model?: string;
 }
 
+/** A single content block from a flight-controller model response/stream. */
+interface ContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+  args?: unknown;
+  arguments?: unknown;
+  toolCallId?: string;
+  content?: string;
+  bytes?: number;
+}
+
+/** Minimal shape for a flight-controller model response. */
+interface FlightControllerResponse {
+  content?: ContentBlock[];
+  finishReason?: string;
+  usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
+}
+
+/** Minimal shape for a flight-controller stream chunk. */
+interface FlightControllerStreamChunk {
+  content?: ContentBlock[];
+  done?: boolean;
+  usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number };
+}
+
 interface FlightControllerModel {
-  sendMessage(context: any): Promise<any>;
-  sendMessageStream?(context: any): AsyncGenerator<any>;
-  getIdentity(): { id: string; displayName: string; provider: any };
+  sendMessage(context: Record<string, unknown>): Promise<FlightControllerResponse>;
+  sendMessageStream?(context: Record<string, unknown>): AsyncGenerator<FlightControllerStreamChunk>;
+  getIdentity(): { id: string; displayName: string; provider: { id: string; displayName: string } };
   getCapabilities?(): { features?: { supportsStreaming?: boolean } };
 }
 
@@ -64,9 +92,9 @@ export class ModelToLLMAdapter implements ILLMProvider {
   }
 
   /** Sends messages to the model synchronously and returns a structured response. */
-  async invoke(messages: SimpleMessage[], options?: any): Promise<SimpleLLMResponse> {
+  async invoke(messages: SimpleMessage[], options?: Record<string, unknown>): Promise<SimpleLLMResponse> {
     const rawMessages = messages.map(m => {
-      const content: any[] = [];
+      const content: Record<string, unknown>[] = [];
 
       if (m.content && m.role !== 'tool') {
         content.push({ type: 'text' as const, text: m.content });
@@ -95,7 +123,7 @@ export class ModelToLLMAdapter implements ILLMProvider {
         });
       }
 
-      const msg: any = {
+      const msg: Record<string, unknown> = {
         role: m.role as 'user' | 'assistant' | 'system' | 'tool',
         content,
       };
@@ -104,13 +132,13 @@ export class ModelToLLMAdapter implements ILLMProvider {
       return msg;
     });
 
-    const openAIMessages: any[] = [];
+    const openAIMessages: Record<string, unknown>[] = [];
     for (const msg of rawMessages) {
       openAIMessages.push(msg);
     }
     for (const msg of openAIMessages) delete msg._isToolResult;
 
-    const context: any = {
+    const context: Record<string, unknown> = {
       messages: openAIMessages,
       maxTokens: options?.max_tokens,
       temperature: options?.temperature ?? 0.7,
@@ -121,13 +149,13 @@ export class ModelToLLMAdapter implements ILLMProvider {
       context.thinking = options.thinking;
     }
     if (options?.tools) {
-      context.tools = options.tools.map((t: any) => {
+      context.tools = (options.tools as Record<string, unknown>[]).map((t: Record<string, unknown>) => {
         if (t.type === 'function' && t.function) return t;
         return {
           type: 'function',
           function: {
-            name: t.name,
-            description: t.description,
+            name: t.name as string,
+            description: t.description as string | undefined,
             parameters: t.input_schema ?? t.parameters ?? { type: 'object', properties: {} },
           },
         };
@@ -137,21 +165,21 @@ export class ModelToLLMAdapter implements ILLMProvider {
     const response = await this.model.sendMessage(context);
 
     const textContent = (response.content ?? [])
-      .filter((c: any) => c.type === 'text')
-      .map((c: any) => c.text)
+      .filter((c: ContentBlock) => c.type === 'text')
+      .map((c: ContentBlock) => c.text ?? '')
       .join('');
 
     const toolCalls = (response.content ?? [])
-      .filter((c: any) => c.type === 'tool_call')
-      .map((c: any) => ({
-        id: c.id,
-        name: c.name,
+      .filter((c: ContentBlock) => c.type === 'tool_call' && c.id != null)
+      .map((c: ContentBlock) => ({
+        id: c.id!,
+        name: c.name ?? 'unknown',
         arguments: JSON.stringify(c.args ?? c.arguments ?? {}),
       }));
 
     const reasoningText = (response.content ?? [])
-      .filter((c: any) => c.type === 'thinking')
-      .map((c: any) => c.thinking ?? c.text ?? '')
+      .filter((c: ContentBlock) => c.type === 'thinking')
+      .map((c: ContentBlock) => c.thinking ?? c.text ?? '')
       .join('');
 
     if (response.usage) {
@@ -183,7 +211,7 @@ export class ModelToLLMAdapter implements ILLMProvider {
   }
 
   /** Streams model output, yielding incremental text, tool calls, and usage chunks. */
-  async *invokeStream(messages: SimpleMessage[], options?: any): AsyncGenerator<{ type: string; text?: string; toolName?: string; toolCall?: any; usage?: any; bytes?: number }> {
+  async *invokeStream(messages: SimpleMessage[], options?: Record<string, unknown>): AsyncGenerator<{ type: string; text?: string; toolName?: string; toolCall?: Record<string, unknown>; usage?: Record<string, unknown>; bytes?: number }> {
     const capabilities = this.model.getCapabilities?.();
     const supportsStreaming = capabilities?.features?.supportsStreaming ?? true;
     if (!supportsStreaming || !this.model.sendMessageStream) {
@@ -199,7 +227,7 @@ export class ModelToLLMAdapter implements ILLMProvider {
     }
 
     const rawMessages = messages.map(m => {
-      const content: any[] = [];
+      const content: Record<string, unknown>[] = [];
       if (m.content && m.role !== 'tool') {
         content.push({ type: 'text' as const, text: m.content });
       }
@@ -223,18 +251,18 @@ export class ModelToLLMAdapter implements ILLMProvider {
           content: m.content || '',
         });
       }
-      const msg: any = { role: m.role, content };
+      const msg: Record<string, unknown> = { role: m.role, content };
       if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
       if (m.name) msg.name = m.name;
       return msg;
     });
 
-    const openAIMessages2: any[] = [];
+    const openAIMessages2: Record<string, unknown>[] = [];
     for (const msg of rawMessages) {
       openAIMessages2.push(msg);
     }
 
-    const context: any = {
+    const context: Record<string, unknown> = {
       messages: openAIMessages2,
       maxTokens: options?.max_tokens,
       temperature: options?.temperature ?? 0.7,
@@ -245,13 +273,13 @@ export class ModelToLLMAdapter implements ILLMProvider {
       context.thinking = options.thinking;
     }
     if (options?.tools) {
-      context.tools = options.tools.map((t: any) => {
+      context.tools = (options.tools as Record<string, unknown>[]).map((t: Record<string, unknown>) => {
         if (t.type === 'function' && t.function) return t;
         return {
           type: 'function',
           function: {
-            name: t.name,
-            description: t.description,
+            name: t.name as string,
+            description: t.description as string | undefined,
             parameters: t.input_schema ?? t.parameters ?? { type: 'object', properties: {} },
           },
         };
@@ -268,7 +296,7 @@ export class ModelToLLMAdapter implements ILLMProvider {
           } else if (block.type === 'tool_start') {
             yield { type: 'tool_start', toolName: block.name };
           } else if (block.type === 'tool_progress') {
-            yield { type: 'tool_progress', toolName: (block as { name?: string }).name, bytes: (block as { bytes?: number }).bytes };
+            yield { type: 'tool_progress', toolName: block.name, bytes: block.bytes };
           } else if (block.type === 'tool_call') {
             yield { type: 'tool_call', toolCall: { id: block.id, name: block.name, arguments: JSON.stringify(block.args ?? block.arguments ?? {}) } };
           }
@@ -290,12 +318,13 @@ export class ModelToLLMAdapter implements ILLMProvider {
           yield { type: 'done' };
         }
       }
-    } catch (err: any) {
-      const isRateLimit = /throttl|rate.limit|too.many|TPM|RPM|429/i.test(err.message ?? '');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isRateLimit = /throttl|rate.limit|too.many|TPM|RPM|429/i.test(msg);
       if (isRateLimit) {
-        logWarn('adapter', `Rate limit hit: ${err.message}`);
+        logWarn('adapter', `Rate limit hit: ${msg}`);
       } else {
-        logError('adapter', `Stream error: ${err.message}`, err);
+        logError('adapter', `Stream error: ${msg}`, err);
       }
       throw err;
     }

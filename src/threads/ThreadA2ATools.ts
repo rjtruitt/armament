@@ -63,8 +63,9 @@ Rules for "name": short kebab-case, max 15 chars (e.g. "scanner", "test-writer")
         systemPrompt: args.systemPrompt,
       });
       return { success: true, data: { workerId, status: 'spawned' } };
-    } catch (err: any) {
-      return { success: false, error: { message: err.message, code: 'SPAWN_ERROR' } };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: { message: msg, code: 'SPAWN_ERROR' } };
     }
   }
 }
@@ -92,9 +93,10 @@ Prefer NOT using this — workers auto-notify on completion.`;
     try {
       const response = await this.callbacks.awaitSubworker(args.workerId, args.timeoutMs ?? 300_000);
       return { success: true, data: { workerId: args.workerId, response } };
-    } catch (err: any) {
-      const code = err.message === 'timeout' ? 'TIMEOUT' : 'WORKER_ERROR';
-      return { success: false, error: { message: err.message, code } };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = msg === 'timeout' ? 'TIMEOUT' : 'WORKER_ERROR';
+      return { success: false, error: { message: msg, code } };
     }
   }
 }

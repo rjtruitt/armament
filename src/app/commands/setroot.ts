@@ -56,8 +56,8 @@ function scaffoldFresh(targetArma: string): string[] {
   return created;
 }
 
-/** Get setroot command.
- * @param {DriftManager} driftManager - Description of drift manager.
+/** Get the /setroot command registration.
+ * @param {DriftManager} driftManager - The DriftManager instance for drift-related operations.
  */
 export function getSetrootCommand(driftManager: DriftManager): CommandRegistration[] {
   return [
@@ -129,8 +129,8 @@ export function getSetrootCommand(driftManager: DriftManager): CommandRegistrati
             handled: true,
             output: `Root set to ${target}.\n${ARMAWS_DIR}/ scaffold at ${targetArma}\nCreated ${created.length} file(s): ${created.join(', ')}\nWorkspace updated.`,
           };
-        } catch (e: any) {
-          return { handled: true, output: `Error: ${e.message}` };
+        } catch (e: unknown) {
+          return { handled: true, output: `Error: ${e instanceof Error ? e.message : String(e)}` };
         }
       },
     },

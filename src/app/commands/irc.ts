@@ -57,8 +57,8 @@ export function getIrcCommands(): CommandRegistration[] {
           try {
             ctx.killAgent(args[0]);
             return { handled: true, output: `Killed agent "${args[0]}"` };
-          } catch (e: any) {
-            return { handled: true, output: e.message };
+          } catch (e: unknown) {
+            return { handled: true, output: e instanceof Error ? e.message : String(e) };
           }
         }
         return { handled: true, output: 'Usage: /kill <name>' };
@@ -73,8 +73,8 @@ export function getIrcCommands(): CommandRegistration[] {
           try {
             ctx.switchChannel(isNaN(idx) ? args[0] : idx);
             return { handled: true, output: 'Switched to channel' };
-          } catch (e: any) {
-            return { handled: true, output: e.message };
+          } catch (e: unknown) {
+            return { handled: true, output: e instanceof Error ? e.message : String(e) };
           }
         }
         return { handled: true, output: 'Usage: /switch <n|name>' };
@@ -166,8 +166,8 @@ export function getIrcCommands(): CommandRegistration[] {
           // Rejoin — this will re-seed notes.md, architecture/, etc.
           ctx.joinChannel(bare);
           return { handled: true, output: `Channel ${name} restarted — workspace and session rebuilt.` };
-        } catch (e: any) {
-          return { handled: true, output: `Error restarting channel: ${e.message}` };
+        } catch (e: unknown) {
+          return { handled: true, output: `Error restarting channel: ${e instanceof Error ? e.message : String(e)}` };
         }
       },
     },

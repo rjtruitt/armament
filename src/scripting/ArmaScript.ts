@@ -140,8 +140,8 @@ export class ArmaScript {
     const errors: string[] = [];
     try {
       this.parser.parse(scriptText);
-    } catch (err: any) {
-      errors.push(err.message);
+    } catch (err: unknown) {
+      errors.push(err instanceof Error ? err.message : String(err));
     }
     return errors;
   }

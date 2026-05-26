@@ -194,7 +194,7 @@ export class ContextManager {
     }
     if (!tui) { this.listContexts(); return; }
     tui.showContextPicker(items, (selected: { name: string }) => {
-      try { this.loadContext(selected.name); } catch (err: any) { tui?.writeMessage('system', 'err', `Failed to load: ${err.message}`, '#control'); }
+      try { this.loadContext(selected.name); } catch (err: unknown) { tui?.writeMessage('system', 'err', `Failed to load: ${err instanceof Error ? err.message : String(err)}`, '#control'); }
     });
   }
 }

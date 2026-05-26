@@ -138,7 +138,7 @@ export class McpIntegration {
               `MCP server "${name}" failed: ${err.message}`);
           });
           return `Adding MCP server "${name}" (${transport})...`;
-        } catch (e: any) {
+        } catch (e: unknown) {
           return `Error: invalid config — usage: /mcp add <name> {"url":"..."}`;
         }
       }

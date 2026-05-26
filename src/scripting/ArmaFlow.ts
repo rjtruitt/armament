@@ -58,9 +58,9 @@ export class ArmaFlow {
       await this.executor.executeCommands(ast.commands, execution);
       execution.status = 'completed';
       execution.completedAt = Date.now();
-    } catch (err: any) {
+    } catch (err: unknown) {
       execution.status = 'failed';
-      execution.error = err.message;
+      execution.error = err instanceof Error ? err.message : String(err);
       execution.completedAt = Date.now();
       throw err;
     }
@@ -76,8 +76,8 @@ export class ArmaFlow {
     let ast: FlowAST;
     try {
       ast = this.parse(flowText);
-    } catch (err: any) {
-      return { valid: false, steps: [], errors: [err.message] };
+    } catch (err: unknown) {
+      return { valid: false, steps: [], errors: [err instanceof Error ? err.message : String(err)] };
     }
 
     steps.push(`Flow: ${ast.name || '(unnamed)'}${ast.description ? ` — ${ast.description}` : ''}`);

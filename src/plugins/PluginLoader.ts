@@ -164,8 +164,8 @@ export class PluginLoader {
     try {
       const git = simpleGit();
       await git.clone(repoUrl, tmpDir, ['--depth', '1']);
-    } catch (err: any) {
-      return { success: false, error: `Git clone failed: ${err.message}` };
+    } catch (err: unknown) {
+      return { success: false, error: `Git clone failed: ${err instanceof Error ? err.message : String(err)}` };
     }
 
     const pluginDirs = this._registry.findPluginDirs(tmpDir);
@@ -225,8 +225,8 @@ export class PluginLoader {
     try {
       const git = simpleGit();
       await git.clone(repoUrl, tmpDir, ['--depth', '1']);
-    } catch (err: any) {
-      return { success: false, error: `Clone failed: ${err.message}` };
+    } catch (err: unknown) {
+      return { success: false, error: `Clone failed: ${err instanceof Error ? err.message : String(err)}` };
     }
 
     const searchDirs = [

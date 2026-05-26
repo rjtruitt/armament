@@ -213,8 +213,8 @@ export function createScriptEngine(config: any = {}) {
           triggers: [],
         };
         loadedScripts.push(script);
-      } catch (e: any) {
-        loadErrors.push({ path, error: e.message });
+      } catch (e: unknown) {
+        loadErrors.push({ path, error: e instanceof Error ? e.message : String(e) });
       }
     },
     loadInline(code: string) {

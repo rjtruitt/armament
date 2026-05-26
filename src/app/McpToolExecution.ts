@@ -43,8 +43,8 @@ export class McpToolExecution {
           try {
             const result = await server.client.callTool({ name: t.name, arguments: (args ?? {}) as Record<string, unknown> });
             return { success: true, data: result };
-          } catch (err: any) {
-            if (err.constructor?.name === 'UnauthorizedError' || err.message?.includes('401')) {
+          } catch (err: unknown) {
+            if (err instanceof Error && (err.constructor?.name === 'UnauthorizedError' || err.message?.includes('401'))) {
               try {
                 await this.reconnectAuth(serverName);
                 const refreshed = this.mcpServers.get(serverName);
@@ -58,7 +58,7 @@ export class McpToolExecution {
                 `${serverName} auth expired — run /mcp auth ${serverName}`, '#control');
               return { success: false, error: { message: `Auth expired for ${serverName}. Run: /mcp auth ${serverName}`, code: 'AUTH_EXPIRED' } };
             }
-            return { success: false, error: { message: err.message, code: 'MCP_ERROR' } };
+            return { success: false, error: { message: err instanceof Error ? err.message : String(err), code: 'MCP_ERROR' } };
           }
         }
         return { success: false, error: { message: `No active connection to ${serverName}. Run: /mcp auth ${serverName}`, code: 'NOT_CONNECTED' } };
@@ -74,9 +74,9 @@ export class McpToolExecution {
         agent.registerTools(itools);
         this.callbacks.writeMessage('system', 'mcp',
           `Injected ${itools.length} tools into ${chName}`, '#logs');
-      } catch (e: any) {
+      } catch (e: unknown) {
         this.callbacks.writeMessage('system', 'mcp',
-          `Failed to inject tools into ${chName}: ${e.message}`, '#logs');
+          `Failed to inject tools into ${chName}: ${e instanceof Error ? e.message : String(e)}`, '#logs');
       }
     }
   }

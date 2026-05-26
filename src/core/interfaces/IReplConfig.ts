@@ -25,16 +25,37 @@ export interface ICompletionConfig {
   notifyParentOnAllComplete: boolean;
 }
 
-/** Interface for IReplConfig.
- * @property {string} agentName - Description of agentName.
- * @property {string} systemPrompt - Description of systemPrompt.
- * @property {boolean} showThinking - Description of showThinking.
- * @property {boolean} showToolCalls - Description of showToolCalls.
- * @property {boolean} compact - Description of compact.
- * @property {boolean} verbose - Description of verbose.
- * @property {boolean} streaming - Description of streaming.
- * @property {number} maxTurns - Description of maxTurns.
- * @property ... and 21 more properties.
+/** Configuration for the REPL session environment.
+ * @property {string} agentName - Name of the agent to spawn for this session.
+ * @property {string} [systemPrompt] - Optional system prompt to override the default.
+ * @property {boolean} showThinking - Whether to display the agent's thinking trace.
+ * @property {boolean} showToolCalls - Whether to display tool call invocations.
+ * @property {boolean} compact - Whether to render output in compact mode.
+ * @property {boolean} verbose - Whether to enable verbose diagnostic output.
+ * @property {boolean} streaming - Whether to stream responses in real time.
+ * @property {number} maxTurns - Maximum number of conversation turns before stopping.
+ * @property {number} [maxBudget] - Optional maximum spend cap for the session.
+ * @property {number} maxRetries - Maximum number of retry attempts on failure.
+ * @property {boolean} noColor - Whether to disable ANSI color output.
+ * @property {boolean} [noTui] - Whether to disable the TUI renderer and use raw I/O.
+ * @property {boolean} [mouse] - Whether to enable mouse input support in the TUI.
+ * @property {'text' | 'json' | 'stream-json'} outputFormat - Format for output rendering.
+ * @property {boolean} promptCaching - Whether to enable prompt caching (e.g., for Anthropic).
+ * @property {boolean} autoSave - Whether to auto-save session state periodically.
+ * @property {boolean} hotReload - Whether to enable hot-reloading of config changes.
+ * @property {string} [configPath] - Path to a custom configuration file.
+ * @property {string} [memoryPath] - Path to a custom memory/persistence file.
+ * @property {string} theme - TUI theme name.
+ * @property {IProviderConfig[]} providers - List of provider configurations.
+ * @property {string} [defaultProvider] - Identifier of the default provider.
+ * @property {string} [defaultModel] - Name of the default model.
+ * @property {string[]} fallbackChain - Ordered list of provider IDs for fallback.
+ * @property {IRateLimitConfig} [rateLimits] - Rate limiting configuration.
+ * @property {IModelConfig} modelConfig - Model parameters (temperature, maxTokens, etc.).
+ * @property {Record<string, 'allow' | 'ask' | 'deny'>} toolPermissions - Per-tool permission overrides.
+ * @property {Partial<IDriftConfig>} [drift] - Drift detection and retention settings.
+ * @property {Partial<ISessionConfig>} [sessionPersistence] - Session save/restore configuration.
+ * @property {Partial<ICompletionConfig>} [completion] - Sub-agent completion and merge settings.
  */
 export interface IReplConfig {
   agentName: string;
@@ -69,11 +90,11 @@ export interface IReplConfig {
   completion?: Partial<ICompletionConfig>;
 }
 
-/** Interface for IModelConfig.
- * @property {number} temperature - Description of temperature.
- * @property {number} maxTokens - Description of maxTokens.
- * @property {number} topP - Description of topP.
- * @property {string} stop - Description of stop.
+/** Model inference parameters.
+ * @property {number} temperature - Sampling temperature (0 = deterministic, higher = more random).
+ * @property {number} maxTokens - Maximum tokens to generate per response.
+ * @property {number} topP - Nucleus sampling probability threshold.
+ * @property {string[]} stop - Stop sequences that end generation.
  */
 export interface IModelConfig {
   temperature: number;
@@ -82,14 +103,14 @@ export interface IModelConfig {
   stop: string[];
 }
 
-/** Interface for IRateLimitConfig.
- * @property {number} requestsPerMinute - Description of requestsPerMinute.
- * @property {number} tokensPerMinute - Description of tokensPerMinute.
- * @property {boolean} adaptive - Description of adaptive.
- * @property {number} initialRate - Description of initialRate.
- * @property {number} minRate - Description of minRate.
- * @property {number} maxRate - Description of maxRate.
- * @property {Record<string, { requestsPerMinute?: number; tokensPerMinute?: number }>} perModel - Description of perModel.
+/** Rate limiting configuration with optional adaptive throttling.
+ * @property {number} [requestsPerMinute] - Maximum requests per minute allowed.
+ * @property {number} [tokensPerMinute] - Maximum tokens per minute allowed.
+ * @property {boolean} [adaptive] - Whether to dynamically adjust rate limits based on observed latency/errors.
+ * @property {number} [initialRate] - Starting rate when adaptive throttling is enabled.
+ * @property {number} [minRate] - Minimum rate floor when adaptively throttled.
+ * @property {number} [maxRate] - Maximum rate ceiling when adaptively throttled.
+ * @property {Record<string, { requestsPerMinute?: number; tokensPerMinute?: number }>} [perModel] - Per-model rate limit overrides keyed by model name.
  */
 export interface IRateLimitConfig {
   requestsPerMinute?: number;

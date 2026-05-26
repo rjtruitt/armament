@@ -138,8 +138,9 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
         });
         child.unref();
         return { success: true, data: `Started in background (pid: ${child.pid})` };
-      } catch (err: any) {
-        return { success: false, error: { message: err.message, code: 'SPAWN_ERROR' } };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: { message: msg, code: 'SPAWN_ERROR' } };
       }
     }
 
@@ -165,8 +166,10 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
         });
       });
       return { success: true, data: output || '(no output)' };
-    } catch (err: any) {
-      return { success: false, error: { message: err.message, code: err.code ?? 'EXECUTION_ERROR' } };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = err instanceof Error && 'code' in err ? (err as any).code : 'EXECUTION_ERROR';
+      return { success: false, error: { message: msg, code } };
     }
   }
 }
@@ -215,11 +218,13 @@ Always read a file before editing it.`;
         return { success: true, data: truncated + `\n\n... truncated at line ${stoppedAt} of ${allLines.length}. Use offset: ${stoppedAt + 1} to continue reading.` };
       }
       return { success: true, data: numbered };
-    } catch (err: any) {
-      if (err.code === 'ENOENT') {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = err instanceof Error && 'code' in err ? (err as any).code : undefined;
+      if (code === 'ENOENT') {
         return { success: false, error: { message: `File not found: ${path}`, code: 'NOT_FOUND' } };
       }
-      return { success: false, error: { message: err.message, code: 'READ_ERROR' } };
+      return { success: false, error: { message: msg, code: 'READ_ERROR' } };
     }
   }
 }
@@ -309,11 +314,13 @@ Rules:
       for (const l of newLines) diffParts.push(`+ ${l}`);
       if (new_string.split('\n').length > 10) diffParts.push(`+ ... (${new_string.split('\n').length - 10} more)`);
       return { success: true, data: diffParts.join('\n') };
-    } catch (err: any) {
-      if (err.code === 'ENOENT') {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = err instanceof Error && 'code' in err ? (err as any).code : undefined;
+      if (code === 'ENOENT') {
         return { success: false, error: { message: `File not found: ${path}. Cannot edit a file that doesn't exist.`, code: 'NOT_FOUND' } };
       }
-      return { success: false, error: { message: err.message, code: 'EDIT_ERROR' } };
+      return { success: false, error: { message: msg, code: 'EDIT_ERROR' } };
     }
   }
 }
@@ -366,8 +373,9 @@ IMPORTANT:
       const lines = content.split('\n').length;
       const bytes = Buffer.byteLength(content, 'utf-8');
       return { success: true, data: `Wrote ${bytes} bytes (${lines} lines) to ${path}.` };
-    } catch (err: any) {
-      return { success: false, error: { message: err.message, code: 'WRITE_ERROR' } };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: { message: msg, code: 'WRITE_ERROR' } };
     }
   }
 }
@@ -420,11 +428,13 @@ The file must already exist — use write_file first to create it. Content is ap
 
       const bytes = Buffer.byteLength(content, 'utf-8');
       return { success: true, data: `Appended ${bytes} bytes to ${path}` };
-    } catch (err: any) {
-      if (err.code === 'ENOENT') {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = err instanceof Error && 'code' in err ? (err as any).code : undefined;
+      if (code === 'ENOENT') {
         return { success: false, error: { message: `File not found: ${path}. Use write_file to create it first, then append_file for subsequent chunks.`, code: 'NOT_FOUND' } };
       }
-      return { success: false, error: { message: err.message, code: 'APPEND_ERROR' } };
+      return { success: false, error: { message: msg, code: 'APPEND_ERROR' } };
     }
   }
 }

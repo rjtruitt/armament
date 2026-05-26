@@ -4,11 +4,11 @@ import { ConfigPane, registerSchema } from '../tui/index.js';
 import { UserConfig } from '../config/index.js';
 import { armaDataDir } from './ChannelPaths.js';
 
-/** Register config panel schemas.
- * @param {ConfigPane} pane - Description of pane.
- * @param {string} paneId - Description of pane id.
- * @param {(target: string} onNavigate - Description of on navigate.
- * @param getMcpConfigs - Optional callback to get real MCP server configs.
+/** Register all TUI config panel schemas for a given pane ID.
+ * @param {ConfigPane} pane - The ConfigPane instance to register schemas on.
+ * @param {string} paneId - Identifier of the config panel (e.g., 'config', 'settings', 'scheduler', 'mcp', 'providers').
+ * @param {(target: string) => void} onNavigate - Callback invoked when navigating to a submenu target.
+ * @param {() => Array<{ name: string; config: any }> | undefined} [getMcpConfigs] - Optional callback to retrieve current MCP server configs; each config value is of any type.
  */
 export function registerConfigPanelSchemas(
   pane: ConfigPane,

@@ -106,8 +106,10 @@ export interface StreamEvent {
   type: 'text' | 'thinking' | 'tool_start' | 'tool_progress' | 'tool_call' | 'tool_result' | 'done';
   text?: string;
   toolName?: string;
-  toolCall?: any;
-  result?: any;
+  /** Tool call with id, name, and JSON-string arguments. */
+  toolCall?: { id?: string; name?: string; arguments?: string };
+  /** Tool result with success status, data, and optional error details. */
+  result?: { success: boolean; data?: unknown; error?: { message: string; code?: string; details?: unknown }; durationMs?: number };
   durationMs?: number;
   bytes?: number;
 }
@@ -183,7 +185,7 @@ export async function* runStreamingLoop(
       sanitizeOrphanedToolCalls(mm); // sanitize before every API call, not just at start
       const messages = mm.getMessages();
       const toolDefs = loop.getToolDefinitions();
-      const options: any = { temperature: 0.7 };
+      const options: Record<string, unknown> = { temperature: 0.7 };
       if (config.maxOutputTokens) {
         options.max_tokens = config.maxOutputTokens;
       }
@@ -252,12 +254,13 @@ export async function* runStreamingLoop(
       let hitTerminal = false;
       const toolResults: Array<{ tc: typeof toolCalls[0]; result: ToolResult }> = [];
       for (const tc of toolCalls) {
-        let args: any;
+        let args: unknown;
         try {
           args = JSON.parse(tc.arguments);
-        } catch (parseErr: any) {
+        } catch (parseErr: unknown) {
           logError('agent', `Failed to parse tool args for ${tc.name}: ${tc.arguments.slice(0, 100)}`, parseErr);
-          const result: ToolResult = { success: false, error: { message: `Invalid JSON in tool arguments: ${parseErr.message}`, code: 'PARSE_ERROR' } };
+          const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+          const result: ToolResult = { success: false, error: { message: `Invalid JSON in tool arguments: ${errMsg}`, code: 'PARSE_ERROR' } };
           config.onToolResult?.(tc.name, {}, result, 0);
           yield { type: 'tool_result' as const, toolName: tc.name, toolCall: tc, result, durationMs: 0 };
           toolResults.push({ tc, result });
@@ -329,7 +332,7 @@ export async function* runStreamingLoop(
     state.status = 'idle';
     config.onTurnComplete?.(state.turnCount, '');
     yield { type: 'done' };
-  } catch (err: any) {
+  } catch (err: unknown) {
     logError('agent', `sendMessageStreaming error on ${config.name}`, err);
     state.status = 'idle';
     config.onTurnComplete?.(state.turnCount, '');

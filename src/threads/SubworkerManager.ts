@@ -91,9 +91,9 @@ export async function handleSubworkerRequest(
         // Worker finished its turn
       }
     });
-  } catch (err: any) {
-    parentHandle.worker.postMessage({ type: 'subworker_error', workerId, error: err.message } as InboundMessage);
-    deps.onWorkerError?.(parentChannel, workerId, err.message);
+  } catch (err: unknown) {
+    parentHandle.worker.postMessage({ type: 'subworker_error', workerId, error: err instanceof Error ? err.message : String(err) } as InboundMessage);
+    deps.onWorkerError?.(parentChannel, workerId, err instanceof Error ? err.message : String(err));
     parentHandle.children.delete(workerId);
   }
 }

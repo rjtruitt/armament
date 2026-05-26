@@ -259,8 +259,8 @@ async function main(): Promise<void> {
   if (args.context) {
     try {
       repl.loadContext(args.context);
-    } catch (err: any) {
-      process.stderr.write(`Failed to load context: ${err.message}\n`);
+    } catch (err: unknown) {
+      process.stderr.write(`Failed to load context: ${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(1);
     }
   }
@@ -656,7 +656,7 @@ async function main(): Promise<void> {
           };
         } catch { return null; }
       },
-    }, { port: 3584 }).catch((err: any) => process.stderr.write(`Web UI error: ${err.message}\n`));
+    }, { port: 3584 }).catch((err: unknown) => process.stderr.write(`Web UI error: ${err instanceof Error ? err.message : String(err)}\n`));
   }
 
   await repl.start();

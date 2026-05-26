@@ -139,9 +139,6 @@ export class NotificationChannel {
 
 
   /**
-   * Register device.
-   */
-  /**
    * Registers a mobile device for push notifications.
    * @param token - The push token.
    * @param platform - The device platform.

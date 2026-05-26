@@ -22,9 +22,15 @@ export interface ProviderPoolConfig {
   onDeviceCode?: (info: DeviceCodeInfo) => void;
 }
 
+/** Minimum provider interface for the pool (duck-typing for provider instances). */
+interface PooledProvider {
+  getCapabilities?: () => { features?: { supportsStreaming?: boolean } };
+  shutdown?: () => Promise<void>;
+}
+
 /** Deduplicating pool of LLM provider instances keyed by provider:model. */
 export class ProviderPool implements IProviderPool {
-  private _pool: Map<string, { provider: any; adapter: ILLMProvider; opts?: { apiKey?: string; baseURL?: string; region?: string; profile?: string; streaming?: boolean; providerName?: string } }> = new Map();
+  private _pool: Map<string, { provider: PooledProvider; adapter: ILLMProvider; opts?: { apiKey?: string; baseURL?: string; region?: string; profile?: string; streaming?: boolean; providerName?: string } }> = new Map();
   private _config: ProviderPoolConfig;
 
   constructor(config: ProviderPoolConfig = {}) {
@@ -56,7 +62,7 @@ export class ProviderPool implements IProviderPool {
     // If streaming flag changed on a cached provider, purge so it recreates with new capabilities
     if (opts?.streaming !== undefined && this._pool.has(key)) {
       const existing = this._pool.get(key)!;
-      const caps = existing.provider.getCapabilities?.();
+      const caps = (existing.provider as { getCapabilities?: () => { features?: { supportsStreaming?: boolean } } }).getCapabilities?.();
       const currentStreaming = caps?.features?.supportsStreaming;
       if (currentStreaming !== undefined && currentStreaming !== opts.streaming) {
         this._pool.delete(key);
@@ -79,7 +85,8 @@ export class ProviderPool implements IProviderPool {
       return this._pool.get(key)!.adapter;
     }
 
-    let provider: any;
+    // Provider variable branches across BedrockProvider, OpenAIProvider, etc. — no single concrete type
+    let provider: unknown;
 
     if (providerType === 'bedrock') {
       const region = opts?.region ?? 'us-west-2';
@@ -113,7 +120,7 @@ export class ProviderPool implements IProviderPool {
         profile: opts?.profile,
       });
 
-      if (opts?.profile && provider.awsAuth?.setAuthHandler) {
+      if (opts?.profile && (provider as { awsAuth?: { setAuthHandler: (h: IAuthHandler) => void } }).awsAuth?.setAuthHandler) {
         const onDeviceCode = this._config.onDeviceCode;
         const authHandler: IAuthHandler = {
           async handleDeviceCodeAuth(info: DeviceCodeInfo): Promise<void> {
@@ -124,7 +131,7 @@ export class ProviderPool implements IProviderPool {
           async handleAuthError(_error: Error): Promise<void> {},
           onAuthenticationFailed(_info: { provider: string; reason: string; canRetry: boolean }): void {},
         };
-        provider.awsAuth.setAuthHandler(authHandler);
+        (provider as { awsAuth: { setAuthHandler: (h: IAuthHandler) => void } }).awsAuth.setAuthHandler(authHandler);
       }
     } else if (providerType === 'openai' || providerType === 'anthropic' || providerType === 'gemini' || providerType === 'ollama') {
       const displayNames: Record<string, string> = {
@@ -170,7 +177,7 @@ export class ProviderPool implements IProviderPool {
       throw new Error(`Unsupported provider type: ${providerType}`);
     }
 
-    const adapter = new ModelToLLMAdapter(provider);
+    const adapter = new ModelToLLMAdapter(provider as any);
     this._pool.set(key, { provider, adapter, opts });
     return adapter;
   }

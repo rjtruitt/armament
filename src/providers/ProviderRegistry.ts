@@ -1,16 +1,16 @@
 import { ProviderRateLimit } from './ProviderRateLimit.js';
 import { ProviderAgentMap } from './ProviderAgentMap.js';
 
-/** Interface for ProviderConfig.
- * @property {string} id - Description of id.
- * @property {string} type - Description of type.
- * @property {string} name - Description of name.
- * @property {string} endpoint - Description of endpoint.
- * @property {Record<string, string>} credentials - Description of credentials.
- * @property {string} models - Description of models.
- * @property {boolean} isDefault - Description of isDefault.
- * @property {boolean} enabled - Description of enabled.
- * @property ... and 1 more properties.
+/** Configuration for registering an AI provider.
+ * @property {string} id - Unique identifier for this provider.
+ * @property {string} type - Backend type (e.g., bedrock, openai, anthropic, gemini, ollama).
+ * @property {string} name - Human-readable display name for this provider.
+ * @property {string} endpoint - Optional custom API endpoint URL.
+ * @property {Record<string, string>} credentials - API credentials stored as key-value pairs.
+ * @property {string[]} models - List of supported model names.
+ * @property {boolean} isDefault - Whether this provider is the default for new sessions.
+ * @property {boolean} enabled - Whether this provider is currently active and available.
+ * @property {Record<string, any>} [metadata] - Arbitrary metadata, such as capabilities list; any type is accepted per key.
  */
 export interface ProviderConfig {
   id: string;
@@ -25,15 +25,15 @@ export interface ProviderConfig {
   metadata?: Record<string, any>;
 }
 
-/** Interface for ProviderStatus.
- * @property {string} id - Description of id.
- * @property {boolean} healthy - Description of healthy.
- * @property {number} lastCheck - Description of lastCheck.
- * @property {number} latencyMs - Description of latencyMs.
- * @property {number} errorCount - Description of errorCount.
- * @property {number} requestCount - Description of requestCount.
- * @property {number} tokenCount - Description of tokenCount.
- * @property {number} costAccumulated - Description of costAccumulated.
+/** Runtime health and usage status for a provider.
+ * @property {string} id - Provider identifier this status belongs to.
+ * @property {boolean} healthy - Whether the provider is currently responsive.
+ * @property {number} lastCheck - Unix timestamp (ms) of the most recent health check.
+ * @property {number} latencyMs - Rolling average response latency in milliseconds.
+ * @property {number} errorCount - Total number of errors encountered.
+ * @property {number} requestCount - Total number of requests made.
+ * @property {number} tokenCount - Total number of tokens processed.
+ * @property {number} costAccumulated - Total accumulated cost in dollars.
  */
 export interface ProviderStatus {
   id: string;

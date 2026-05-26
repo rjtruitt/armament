@@ -414,9 +414,9 @@ export class ArmaScriptExecutor {
     }
     try {
       await this.executeBlock(tryBody, scope);
-    } catch (err: any) {
-      this.lastError = err.message;
-      this.variables['$error'] = err.message;
+    } catch (err: unknown) {
+      this.lastError = err instanceof Error ? err.message : String(err);
+      this.variables['$error'] = this.lastError;
       await this.executeBlock(catchBody, scope);
     }
     return i + 1;
@@ -443,11 +443,11 @@ export class ArmaScriptExecutor {
         await executeCommand(resolved, state);
       }
       this.syncFromCommandState(state);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (this.errorMode === 'continue') {
         logWarn('ArmaScript', `Command /${cmd.command} failed (continue mode)`, err);
       } else if (this.errorMode !== 'stop' && this.macros.has(this.errorMode)) {
-        this.variables['$error'] = err.message;
+        this.variables['$error'] = err instanceof Error ? err.message : String(err);
         const macro = this.macros.get(this.errorMode)!;
         await this.run(macro.body.join('\n'));
       } else {
