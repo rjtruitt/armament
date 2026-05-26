@@ -65,8 +65,9 @@ export function buildThreadCallbacks(deps: ThreadCallbackDeps): any {
     onMcpToolRequest: (channel: string, requestId: string, server: string, tool: string, args: any) => {
       (deps.getMcpManager() as any).executeTool?.(server, tool, args).then((result: any) => {
         deps.getThreadCoordinator()?.respondMcpTool(channel, requestId, result);
-      }).catch((err: any) => {
-        deps.getThreadCoordinator()?.respondMcpTool(channel, requestId, { success: false, error: { message: err.message, code: 'MCP_ERROR' } });
+      }).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        deps.getThreadCoordinator()?.respondMcpTool(channel, requestId, { success: false, error: { message: msg, code: 'MCP_ERROR' } });
       });
     },
     onThreadDied: (channel: string) => {

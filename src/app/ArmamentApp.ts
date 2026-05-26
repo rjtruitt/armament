@@ -470,8 +470,9 @@ export class ArmamentApp extends ReplPublicAPI {
     if (channelAgent) {
       this.tuiMode?.writeMessage('user', this.getUserNick(), message, chName);
       if (channelAgent.status === 'idle') {
-        channelAgent.sendMessage(message).catch((err: any) => {
-          this.tuiMode?.writeMessage('system', 'err', `Agent error: ${err.message}`, chName);
+        channelAgent.sendMessage(message).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.tuiMode?.writeMessage('system', 'err', `Agent error: ${msg}`, chName);
         });
       } else {
         channelAgent.injectMessage(message);

@@ -71,8 +71,9 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
         const toolCount = deps.getMcpServers().get(name)?.tools.length ?? 0;
         // TUI message written by caller after tui is set
         (deps as any)._tuiRef?.writeMessage('system', 'mcp', `✓ ${name} connected (${toolCount} tools)`, '#control');
-      }).catch((err: any) => {
-        (deps as any)._tuiRef?.writeMessage('system', 'mcp', `✗ ${name} failed: ${err.message}`, '#control');
+      }).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        (deps as any)._tuiRef?.writeMessage('system', 'mcp', `✗ ${name} failed: ${msg}`, '#control');
       });
     },
     onMcpConfigChange: (serverName: string, fieldPath: string, value: any) => {

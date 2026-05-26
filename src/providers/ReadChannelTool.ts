@@ -6,6 +6,15 @@ import type { ITool, ToolResult, ToolContext } from 'iteratio';
 import { z } from 'zod';
 import { bareName, getNotesPath, armaDataDir } from '../app/ChannelPaths.js';
 
+/** Shape of a serialized channel session state stored in ~/.arma/sessions/. */
+interface ChannelState {
+  agentConfig?: { model?: string; provider?: string; tools?: string[] };
+  turnCount?: number;
+  totalTokens?: number;
+  chatMessages?: Array<{ timestamp?: string; sender?: string; type?: string; content?: string }>;
+  messages?: Array<{ role: string; content: string; tool_call_id?: string; tool_calls?: Array<{ id: string; name: string; arguments: string }> }>;
+}
+
 /** Reads a channel's session state file and workspace notes.md. */
 export class ReadChannelTool implements ITool {
   /**
@@ -46,7 +55,7 @@ and optionally the full message history (may be large).`;
 
     // Read session state file from ~/.arma
     const statePath = join(armaDataDir(), 'sessions', 'channels', `${slug}.state.json`);
-    let state: any = null;
+    let state: ChannelState | null = null;
     let stateErr: string | null = null;
     if (existsSync(statePath)) {
       try {

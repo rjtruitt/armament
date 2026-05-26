@@ -23,18 +23,12 @@ coverage/
 .cache/
 .aider*
 
-# Documentation - only track README, CHANGELOG, LICENSE, and .github docs
+# Documentation - only track README, CHANGELOG, LICENSE, and docs/ folder
 *.md
 !README.md
 !CHANGELOG.md
 !LICENSE
-!.github/ARCHITECTURE.md
-!.github/WORKFLOW.md
-!.github/TUI.md
-!.github/CHANNELS.md
-!.github/WEBUI.md
-!.github/WEB_TESTING.md
-!.github/WEBHOOK.md
+!docs/*.md
 !.arma/core-notes.md
 !.arma/core-architecture-index.md
 !.arma/core-architecture-drift.md
