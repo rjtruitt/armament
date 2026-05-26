@@ -48,7 +48,6 @@
 | `/seed <name> <role> <msg>` | Inject fake history (role: user/assistant) |
 | `/collect [a, b] -> c` | Buffer A+B results, forward to C |
 | `/approve "question?"` | Pause for human approval gate |
-| `/broadcast "message"` | Send to all running agents |
 | `/sleep 5000` | Wait N milliseconds |
 | `/log "text"` | Write to flow log channel |
 | `/set var value` | Set a flow variable |

@@ -430,7 +430,7 @@ Use different providers for different agents:
 Ensure your config file has the API key:
 
 ```bash
-cat ~/.arma/config.json
+cat ~/.armament/config.json
 ```
 
 Or set environment variable:

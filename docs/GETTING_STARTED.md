@@ -14,7 +14,6 @@ Before you begin, ensure you have:
   - [Google Gemini](https://ai.google.dev/)
   - AWS Bedrock credentials
   - [OpenRouter](https://openrouter.ai/)
-  - [Replicate](https://replicate.com/)
   - Or a local [Ollama](https://ollama.ai/) installation
 
 ### System Requirements
@@ -28,34 +27,20 @@ Before you begin, ensure you have:
 
 ### Option 1: Development Installation (Current)
 
-**Note**: Armament is currently in alpha and not yet published to npm. You'll need to clone and build from source.
+### Development Installation
+
+**Note**: Armament and its core dependencies (`iteratio`, `flight-controller`, `iteratio-plugin-tools`) are not yet published to npm. You must build them all from source as siblings:
 
 ```bash
-# Clone the repository
-git clone https://github.com/rjtruitt/armament.git
-cd armament
+# Create a project directory and clone all repos
+mkdir ai-armament && cd ai-armament
 
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-```
-
-#### Required Sibling Dependencies
-
-Armament currently uses local file dependencies. Clone these repositories as siblings to the armament directory:
-
-```bash
-cd /path/to/your/projects
-
-# Clone all required repositories
 git clone https://github.com/rjtruitt/armament.git
 git clone https://github.com/rjtruitt/iteratio.git
 git clone https://github.com/rjtruitt/flight-controller.git
 git clone https://github.com/rjtruitt/iteratio-plugin-tools.git
 
-# Build dependencies first
+# Build dependencies first (required before armament's npm install)
 cd iteratio && npm install && npm run build && cd ..
 cd flight-controller && npm install && npm run build && cd ..
 cd iteratio-plugin-tools && npm install && npm run build && cd ..
@@ -66,9 +51,13 @@ npm install
 npm run build
 ```
 
+If `npm install` in armament fails with "Cannot find module" errors, the sibling directories (`../iteratio`, `../flight-controller`, `../iteratio-plugin-tools`) are missing or not built yet. Run the build steps above.
+
 ### Option 2: npm Installation (Coming Soon)
 
-Once published to npm, installation will be:
+Armament is not yet published to npm. Only the development installation (Option 1) is currently available.
+
+Once published, it will be:
 
 ```bash
 npm install -g armament
@@ -94,14 +83,14 @@ This will guide you through:
 
 ### Manual Configuration
 
-Alternatively, create a configuration file at `~/.arma/config.json`:
+Alternatively, create a configuration file at `~/.armament/config.json`:
 
 ```bash
 # Copy the example configuration
-cp config.example.json ~/.arma/config.json
+cp config.example.json ~/.armament/config.json
 
 # Edit with your preferred editor
-nano ~/.arma/config.json
+nano ~/.armament/config.json
 ```
 
 #### Minimum Configuration
@@ -112,11 +101,14 @@ At minimum, you need to configure one provider:
 {
   "defaultProvider": "anthropic",
   "defaultModel": "claude-sonnet-4-20250514",
-  "providers": {
-    "anthropic": {
+  "providers": [
+    {
+      "type": "anthropic",
+      "name": "Anthropic",
+      "models": [{ "name": "claude-sonnet-4-20250514" }],
       "apiKey": "sk-ant-api03-..."
     }
-  }
+  ]
 }
 ```
 
@@ -236,7 +228,7 @@ Preserve your work across sessions:
 
 #### "API key not configured"
 
-Make sure your `~/.arma/config.json` contains valid API credentials:
+Make sure your `~/.armament/config.json` contains valid API credentials:
 
 ```json
 {

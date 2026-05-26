@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
 
-const LOG_PATH = path.join(homedir(), '.armament', 'armament.log');
+const LOG_PATH = path.join(homedir(), '.arma', 'armament.log');
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB rotation
 
 let _stream: fs.WriteStream | null = null;

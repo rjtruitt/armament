@@ -37,7 +37,7 @@ Managed by `LayoutManager` (`src/tui/LayoutManager.ts`):
 
 ```
 stdin bytes
-  → TuiInputHandler.parseRaw()
+  → TuiInputHandler.onStdin()
     → tokenizes escape sequences
     → routes to appropriate handler:
       → handlePaneKey()   if active @channel and not sidebar-focused

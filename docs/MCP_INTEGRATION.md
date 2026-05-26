@@ -94,13 +94,13 @@ Access Google Drive files.
 ### Add Server
 
 ```bash
-/mcp add <name> <command> [args...]
+/mcp add <name> {"url":"...", "transport":"stdio|sse"}
 ```
 
 Example:
 
 ```bash
-/mcp add filesystem npx @modelcontextprotocol/server-filesystem /home/user/projects
+/mcp add filesystem {"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/home/user/projects"]}
 ```
 
 ### List Servers
@@ -109,10 +109,10 @@ Example:
 /mcp list
 ```
 
-### Remove Server
+### Show Status
 
 ```bash
-/mcp remove <name>
+/mcp
 ```
 
 ### Restart Server
@@ -188,11 +188,11 @@ server.setRequestHandler('tools/call', async (request) => {
 ### Tools not appearing
 
 - Restart server: `/mcp restart <name>`
-- Check server logs in `~/.arma/logs/mcp-<name>.log`
+- Check server logs in `~/.armament/logs/mcp-<name>.log`
 
 ### OAuth issues
 
-- Clear stored tokens in `~/.arma/oauth/`
+- Clear stored tokens in `~/.armament/oauth/`
 - Ensure browser can open for authorization
 
 ## See Also

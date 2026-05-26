@@ -31,7 +31,7 @@ cd ../armament && npm run build
 
 **Solution**:
 
-1. Check `~/.arma/config.json` exists
+1. Check `~/.armament/config.json` exists
 2. Verify API key is correct
 3. Or set environment variable:
 
@@ -58,11 +58,14 @@ Examples:
 
 ```json
 {
-  "providers": {
-    "anthropic": {
+  "providers": [
+    {
+      "type": "anthropic",
+      "name": "Anthropic",
+      "models": [{ "name": "claude-sonnet-4-20250514" }],
       "apiKey": "..."
     }
-  }
+  ]
 }
 ```
 
@@ -142,7 +145,6 @@ npm start -- --no-tui
 
 **Solution**:
 - Resize terminal window
-- Or set custom width: `npm start -- --width 100`
 
 ### Garbled output
 
@@ -166,7 +168,7 @@ npm start -- --no-tui
 npx -y @modelcontextprotocol/server-filesystem /path
 
 # Check logs
-cat ~/.arma/logs/mcp-<name>.log
+cat ~/.armament/logs/mcp-<name>.log
 ```
 
 ### MCP tools not appearing
@@ -183,7 +185,7 @@ cat ~/.arma/logs/mcp-<name>.log
 /mcp restart filesystem
 
 # Check logs
-cat ~/.arma/logs/mcp-filesystem.log
+cat ~/.armament/logs/mcp-filesystem.log
 ```
 
 ### OAuth not working
@@ -191,7 +193,7 @@ cat ~/.arma/logs/mcp-filesystem.log
 **Cause**: Browser not opening or token expired.
 
 **Solution**:
-- Clear tokens: `rm -rf ~/.arma/oauth/`
+- Clear tokens: `rm -rf ~/.armament/oauth/`
 - Ensure browser can open
 - Manually authorize in browser
 
@@ -262,7 +264,7 @@ cat ~/.arma/logs/mcp-filesystem.log
 
 ```bash
 # Fix config permissions
-chmod 600 ~/.arma/config.json
+chmod 600 ~/.armament/config.json
 
 # Fix directory permissions
 chmod 755 ~/.arma
@@ -273,17 +275,17 @@ chmod 755 ~/.arma
 ### Enable Debug Logging
 
 ```bash
-npm start -- --log-level debug
+npm start -- --verbose
 ```
 
 ### Check Logs
 
 ```bash
 # Main log
-tail -f ~/.arma/logs/armament.log
+tail -f ~/.armament/logs/armament.log
 
 # MCP logs
-tail -f ~/.arma/logs/mcp-*.log
+tail -f ~/.armament/logs/mcp-*.log
 ```
 
 ### Inspect Configuration
@@ -304,7 +306,7 @@ tail -f ~/.arma/logs/mcp-*.log
 
 If you can't resolve an issue:
 
-1. **Check logs**: `~/.arma/logs/armament.log`
+1. **Check logs**: `~/.armament/logs/armament.log`
 2. **Search issues**: [GitHub Issues](https://github.com/rjtruitt/armament/issues)
 3. **Ask community**: [GitHub Discussions](https://github.com/rjtruitt/armament/discussions)
 4. **Report bug**: [New Issue](https://github.com/rjtruitt/armament/issues/new)

@@ -363,7 +363,7 @@ export class McpManager {
 
   /** Persist MCP server configs to ~/.armament/mcp.json. */
   persistMcpConfig(): void {
-    const dir = path.join(homedir(), '.armament');
+    const dir = path.join(homedir(), '.arma');
     const file = path.join(dir, 'mcp.json');
     try {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -390,7 +390,7 @@ export class McpManager {
 
   /** Load MCP server configs from ~/.armament/mcp.json. */
   loadMcpConfig(): Array<{ name: string; config: any }> {
-    const file = path.join(homedir(), '.armament', 'mcp.json');
+    const file = path.join(homedir(), '.arma', 'mcp.json');
     try {
       if (fs.existsSync(file)) {
         return JSON.parse(fs.readFileSync(file, 'utf8'));

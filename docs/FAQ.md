@@ -18,7 +18,6 @@ Yes, Armament is open-source (MIT license) and free to use. However, you'll need
 - Google Gemini
 - Ollama (local, free)
 - OpenRouter
-- Replicate
 
 ### Can I use Armament offline?
 
@@ -42,7 +41,7 @@ Yes, but npm is recommended for consistency with documentation.
 
 ### Where is the config file?
 
-`~/.arma/config.json` by default. You can specify a custom path with `--config`.
+`~/.armament/config.json` by default.
 
 ### How do I get an API key?
 
@@ -152,7 +151,7 @@ A workflow is a YAML file defining a sequence of agent tasks. See `examples/work
 
 ### "API key not configured"
 
-Add your API key to `~/.arma/config.json` or set environment variable. See [Troubleshooting](./TROUBLESHOOTING.md).
+Add your API key to `~/.armament/config.json` or set environment variable. See [Troubleshooting](./TROUBLESHOOTING.md).
 
 ### Agent isn't responding
 
@@ -244,7 +243,7 @@ Yes! Open a feature request on [GitHub Discussions](https://github.com/rjtruitt/
 
 ### Are my API keys secure?
 
-API keys are stored in `~/.arma/config.json`. Ensure this file has restricted permissions (`chmod 600`). API keys are never logged.
+API keys are stored in `~/.armament/config.json`. Ensure this file has restricted permissions (`chmod 600`). API keys are never logged.
 
 ### Can agents access my files?
 

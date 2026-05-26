@@ -208,7 +208,7 @@ npm start -- --log-level debug
 ### Inspect Logs
 
 ```bash
-tail -f ~/.arma/logs/armament.log
+tail -f ~/.armament/armament.log
 ```
 
 ### VS Code

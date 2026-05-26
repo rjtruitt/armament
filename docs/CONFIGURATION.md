@@ -6,7 +6,7 @@ Complete reference for configuring Armament.
 
 Armament looks for configuration in the following order:
 
-1. `~/.arma/config.json` (recommended)
+1. `~/.armament/config.json` (recommended)
 2. `./config.json` (current directory)
 3. Environment variables
 4. Command-line flags (highest priority)
@@ -360,9 +360,9 @@ Configure session persistence and logging.
 {
   "session": {
     "saveContexts": true,
-    "contextDir": "~/.arma/contexts",
+    "contextDir": "~/.armament/contexts",
     "logLevel": "info",
-    "logFile": "~/.arma/logs/armament.log"
+    "logFile": "~/.armament/armament.log"
   }
 }
 ```
@@ -377,7 +377,7 @@ Enable saving conversation contexts.
 ### session.contextDir
 
 **Type**: `string`  
-**Default**: `"~/.arma/contexts"`
+**Default**: `"~/.armament/contexts"`
 
 Directory for saved contexts.
 
@@ -392,7 +392,7 @@ Logging verbosity level.
 ### session.logFile
 
 **Type**: `string`  
-**Default**: `"~/.arma/logs/armament.log"`
+**Default**: `"~/.armament/armament.log"`
 
 Path to log file. Set to `null` to disable file logging.
 
@@ -484,7 +484,7 @@ Armament respects these environment variables:
 Settings are applied in this order (later overrides earlier):
 
 1. Default values
-2. Configuration file (`~/.arma/config.json`)
+2. Configuration file (`~/.armament/config.json`)
 3. Environment variables
 4. Command-line flags
 

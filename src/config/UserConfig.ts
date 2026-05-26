@@ -150,7 +150,7 @@ export class UserConfig {
   private _noPersist = false;
 
   private constructor() {
-    this._configDir = join(homedir(), '.armament');
+    this._configDir = join(homedir(), '.arma');
     this._configPath = join(this._configDir, 'config.json');
     this._settings = this.load();
   }

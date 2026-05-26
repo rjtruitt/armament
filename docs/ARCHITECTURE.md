@@ -132,7 +132,7 @@ Model Context Protocol support for extensible tools:
 Save and restore conversation state:
 
 - **Format**: JSON serialization of conversation history
-- **Storage**: `~/.arma/contexts/` by default
+- **Storage**: `~/.armament/contexts/` by default
 - **Metadata**: Includes model, tokens, cost, timestamp
 - **Compression**: Large contexts are compressed
 

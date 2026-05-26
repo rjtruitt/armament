@@ -39,7 +39,7 @@ export class ContextManager {
    * Gets the context dir.
    */
   getContextDir(): string {
-    return path.join(homedir(), '.armament', 'contexts');
+    return path.join(homedir(), '.arma', 'contexts');
   }
 
   /**
