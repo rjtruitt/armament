@@ -1,0 +1,104 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# wiki Sync — keep docs in sync with code changes
+# Watches for merged PRs, updates relevant wiki pages
+# ──────────────────────────────────────────────────────────────────────────────
+name: wiki-sync
+description: Auto-update wiki docs when code changes are merged
+version: "1.0.0"
+
+trigger:
+  type: cron
+  cron: "0 */4 * * *"  # every 4 hours
+
+params:
+  repo:
+    type: string
+    required: true
+  wiki_space:
+    type: string
+    required: true
+  since_hours:
+    type: number
+    default: 4
+
+agents:
+  change-detector:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Find all PRs merged into main in $params.repo in the last $params.since_hours hours.
+      For each PR, get:
+      - Title and description
+      - Files changed
+      - Whether it touches docs/ folder, README, or public API
+
+      Only include PRs that likely affect documentation.
+      Skip: dependency bumps, test-only changes, internal refactors.
+    tools: [mcp__github__list_pull_requests, mcp__github__pull_request_read, mcp__github__get_file_contents]
+    output: doc_relevant_prs
+    budget: 0.15
+    turns: 10
+
+  page-finder:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [change-detector]
+    condition: "$change-detector.output.prs.length > 0"
+    prompt: |
+      For each doc-relevant PR, find the wiki pages that need updating.
+      Search the $params.wiki_space space for pages that cover the
+      same topics/APIs/features that were changed.
+
+      Map: PR → affected wiki pages (with page IDs and current content).
+    tools: [mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage, mcp__wiki__getPagesInwikiSpace]
+    inject:
+      - workflow:wiki-sync.change-detector
+    output: page_mappings
+    budget: 0.25
+    turns: 15
+
+  updater:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [page-finder]
+    prompt: |
+      Update the affected wiki pages to reflect the code changes.
+      For each page:
+      - Read current content
+      - Identify what's outdated based on the PR changes
+      - Update only the affected sections (don't rewrite unrelated content)
+      - Maintain existing formatting and structure
+      - Add a note at the bottom: "Auto-updated from PR #NNN on $date"
+
+      If changes are too complex to auto-update, flag for human review instead.
+    tools: [mcp__wiki__getwikiPage, mcp__wiki__updatewikiPage]
+    inject:
+      - workflow:wiki-sync.change-detector
+      - workflow:wiki-sync.page-finder
+      - docs/AGENT-CONFLUENCE-GUIDE.md
+    output: update_results
+    budget: 0.75
+    turns: 20
+
+waves:
+  - name: "detect"
+    agents: [change-detector]
+  - name: "find-pages"
+    agents: [page-finder]
+  - name: "update"
+    agents: [updater]
+    gate: auto
+
+circuit_breaker:
+  max_total_budget: 1.50
+  max_total_turns: 50
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate
+
+hooks:
+  on_complete: "/log 'wiki sync: $update_results.updated_count pages updated'"
+  on_failure: "/notify #docs-team 'wiki sync failed: $error'"
+
+meta:
+  tags: [mcp, wiki, sync, automated]

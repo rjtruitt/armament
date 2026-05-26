@@ -1,0 +1,94 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Slack Digest — runs hourly, pulls messages from channels, summarizes
+# ──────────────────────────────────────────────────────────────────────────────
+name: slack-digest
+description: Pull Slack messages every hour, summarize activity, post digest
+version: "1.0.0"
+
+trigger:
+  type: cron
+  cron: "0 * * * *"  # every hour
+
+params:
+  channels:
+    type: array
+    default: ["#engineering", "#incidents", "#deploys"]
+    description: "Slack channels to monitor"
+  digest_channel:
+    type: string
+    default: "#eng-digest"
+    description: "Where to post the digest"
+  lookback_minutes:
+    type: number
+    default: 60
+
+agents:
+  collector:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Search for Slack messages from the last $params.lookback_minutes minutes
+      in these channels: $params.channels
+
+      For each channel, collect:
+      - All messages (not just threads)
+      - Thread replies on active discussions
+      - Any links shared
+      - Any @mentions of people
+
+      Output as structured JSON grouped by channel.
+    tools: [mcp__kb__search, mcp__kb__chat]
+    output: raw_messages
+    budget: 0.10
+    turns: 10
+    timeout: 60000
+
+  summarizer:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [collector]
+    prompt: |
+      Summarize the Slack activity into a digest. For each channel:
+      - 1-2 sentence summary of main topics
+      - Key decisions made
+      - Action items mentioned
+      - Incidents or alerts raised
+      - Links worth noting
+
+      Skip channels with no meaningful activity.
+      Format as a clean Slack message with emoji headers per channel.
+      Keep it scannable — busy engineers have 30 seconds to read this.
+    inject:
+      - workflow:slack-digest.collector
+    output: digest
+    budget: 0.15
+    turns: 5
+    timeout: 30000
+
+  poster:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [summarizer]
+    condition: "$summarizer.output != ''"
+    prompt: |
+      Post the digest to $params.digest_channel.
+      If nothing notable happened, post a short "All quiet" message instead.
+    inject:
+      - workflow:slack-digest.summarizer
+    output: post_result
+    budget: 0.05
+    turns: 3
+    timeout: 15000
+
+circuit_breaker:
+  max_total_budget: 0.50
+  max_total_turns: 25
+  stuck_detection:
+    consecutive_identical_calls: 2
+    action: terminate
+
+hooks:
+  on_failure: "/log 'Slack digest failed: $error'"
+
+meta:
+  tags: [monitoring, hourly, slack]

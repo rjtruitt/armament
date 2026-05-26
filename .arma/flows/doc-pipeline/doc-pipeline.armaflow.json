@@ -1,0 +1,137 @@
+{
+  "name": "doc-pipeline",
+  "description": "Research → structured findings → pipe through formatter → writer",
+  "trigger": {
+    "type": "manual"
+  },
+  "nodes": [
+    {
+      "id": "researcher-0",
+      "type": "spawn",
+      "config": {
+        "agentName": "researcher",
+        "task": "Research the codebase architecture. Identify all modules, their responsibilities, and dependencies.",
+        "completionSchema": {
+          "fields": [
+            {
+              "name": "modules",
+              "type": "string[]",
+              "required": true,
+              "description": "All module names found"
+            },
+            {
+              "name": "dependencies",
+              "type": "string[]",
+              "required": true,
+              "description": "Module dependency pairs"
+            },
+            {
+              "name": "circular",
+              "type": "string[]",
+              "required": false,
+              "description": "Any circular dependency chains"
+            }
+          ],
+          "purpose": "Findings feed the documentation writer",
+          "sticky": true
+        }
+      }
+    },
+    {
+      "id": "task-1",
+      "type": "task",
+      "config": {
+        "action": "pipe",
+        "source": "researcher",
+        "script": "",
+        "target": ""
+      }
+    },
+    {
+      "id": "writer-2",
+      "type": "spawn",
+      "config": {
+        "agentName": "writer"
+      }
+    },
+    {
+      "id": "writer-3",
+      "type": "task",
+      "config": {
+        "action": "seed",
+        "target": "writer",
+        "role": "user",
+        "content": "You will receive a formatted architecture report."
+      }
+    },
+    {
+      "id": "task-4",
+      "type": "task",
+      "config": {
+        "action": "msg",
+        "target": "writer",
+        "message": "The formatted module analysis is above. Write comprehensive documentation covering: module purposes, dependency graph highlights, and any circular dependency issues found."
+      }
+    },
+    {
+      "id": "wait-5",
+      "type": "wait",
+      "config": {
+        "agentName": "writer"
+      }
+    },
+    {
+      "id": "approval-6",
+      "type": "approval",
+      "config": {
+        "prompt": "Publish documentation?",
+        "gateType": "confirm"
+      }
+    },
+    {
+      "id": "task-7",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Documentation pipeline complete"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "researcher-0",
+      "to": "task-1",
+      "label": "chain"
+    },
+    {
+      "from": "task-1",
+      "to": "writer-2",
+      "label": "chain"
+    },
+    {
+      "from": "writer-3",
+      "to": "writer-2",
+      "label": "seed"
+    },
+    {
+      "from": "writer-2",
+      "to": "task-4",
+      "label": "chain"
+    },
+    {
+      "from": "writer-2",
+      "to": "wait-5",
+      "label": "wait"
+    },
+    {
+      "from": "wait-5",
+      "to": "approval-6",
+      "label": "chain"
+    },
+    {
+      "from": "approval-6",
+      "to": "task-7",
+      "label": "chain"
+    }
+  ]
+}

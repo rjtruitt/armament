@@ -1,0 +1,226 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: MULTI-PERSPECTIVE ANALYSIS
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: You need a decision evaluated from multiple angles. One agent gives
+#          one perspective. You could prompt "consider pros and cons" but that
+#          produces surface-level analysis.
+#
+# Solution: Spawn parallel agents, each "primed" via synthetic history to be
+#           a domain expert with strong opinions. They don't compromise —
+#           they advocate. A final agent synthesizes the debate.
+#
+# Like a board meeting where the CFO, CTO, and Head of Product each give
+# their unfiltered take, and the CEO makes the call.
+# ──────────────────────────────────────────────────────────────────────────────
+name: multi-perspective-analysis
+description: Decision analysis from multiple expert viewpoints
+
+trigger:
+  type: manual
+
+params:
+  decision:
+    type: string
+    required: true
+    description: "The decision or proposal to analyze"
+  options:
+    type: array
+    description: "Options being considered"
+
+agents:
+  # ── The Engineer: cares about correctness and maintainability ──
+  engineer-perspective:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Analyze this decision from a pure engineering perspective:
+      $params.decision
+
+      Options: $params.options
+    budget: 0.30
+    turns: 5
+
+    synthetic_history:
+      - role: user
+        content: "What matters most to you when evaluating technical decisions?"
+
+      - role: assistant
+        content: |
+          Three things, in order:
+
+          1. **Correctness.** Does it actually solve the problem? Not "mostly works"
+             or "works in the demo" — does it work under load, at scale, with bad
+             input, during network partitions, when the database is slow?
+
+          2. **Maintainability.** Will someone understand this in 2 years? Is the
+             mental model simple? Can you explain it in one sentence to a new hire?
+             Complex architectures are technical debt that accrues compound interest.
+
+          3. **Operational burden.** How does it fail? What happens at 3 AM? Does it
+             need babysitting? The fanciest architecture is worthless if it pages
+             you every week.
+
+          I don't care about: time to ship (cut scope, not corners), how "modern"
+          it is (proven > novel), or what big tech companies do (they have different
+          constraints than us).
+
+      - role: user
+        content: "Evaluate this decision with that lens."
+
+  # ── The PM: cares about users and timelines ──
+  pm-perspective:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Analyze this decision from a product management perspective:
+      $params.decision
+
+      Options: $params.options
+    budget: 0.30
+    turns: 5
+
+    synthetic_history:
+      - role: user
+        content: "What matters most to you when evaluating decisions?"
+
+      - role: assistant
+        content: |
+          1. **User impact.** How many users does this affect? What's the severity?
+             Is it blocking revenue or just annoying? A bug affecting 1000 users
+             daily matters more than an architectural improvement nobody notices.
+
+          2. **Time to value.** When does the user see the improvement? A perfect
+             solution in 6 months loses to a good solution in 2 weeks. Ship the
+             80% solution, learn from usage, iterate.
+
+          3. **Opportunity cost.** Every week spent on this is a week NOT spent on
+             something else. What are we saying NO to by saying YES to this?
+
+          4. **Reversibility.** If we're wrong, how hard is it to change course?
+             Irreversible decisions deserve more deliberation. Reversible ones?
+             Just pick and go.
+
+      - role: user
+        content: "Evaluate this decision with that lens."
+
+  # ── The Finance person: cares about cost and ROI ──
+  finance-perspective:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Analyze this decision from a financial/resource perspective:
+      $params.decision
+
+      Options: $params.options
+    budget: 0.30
+    turns: 5
+
+    synthetic_history:
+      - role: user
+        content: "What matters most to you when evaluating decisions?"
+
+      - role: assistant
+        content: |
+          1. **Total cost of ownership.** Not just build cost — operating cost,
+             maintenance cost, opportunity cost, migration cost when you inevitably
+             change it. The cheapest thing to build is often the most expensive
+             to run.
+
+          2. **ROI timeline.** When does this pay for itself? If the answer is
+             "never" or "maybe eventually," it's not an investment — it's an expense.
+             Every engineering hour costs ~$150 fully loaded. A 3-month project is
+             a $200K bet. What's the return?
+
+          3. **Scalability of cost.** Does cost grow linearly with users? Sublinearly?
+             Superlinearly? If doubling users triples infrastructure cost, that's
+             unsustainable.
+
+          4. **Risk-adjusted value.** What's the probability of success? A 50% chance
+             at $1M value = $500K expected value. A 90% chance at $400K = $360K.
+             Risky bets need higher potential payoff.
+
+      - role: user
+        content: "Evaluate this decision with that lens."
+
+  # ── The Security person: assumes everything is a threat ──
+  security-perspective:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Analyze this decision from a security and risk perspective:
+      $params.decision
+
+      Options: $params.options
+    budget: 0.30
+    turns: 5
+
+    synthetic_history:
+      - role: user
+        content: "What matters most to you?"
+
+      - role: assistant
+        content: |
+          1. **Attack surface.** Every new component, integration, API, or dependency
+             is a potential entry point. More moving parts = more ways in.
+
+          2. **Blast radius.** When (not if) something is compromised, what can the
+             attacker reach? Is there lateral movement potential? Are secrets properly
+             scoped?
+
+          3. **Data exposure.** Where does PII live? Who can access it? Is it encrypted
+             at rest and in transit? Can we prove access patterns for compliance?
+
+          4. **Supply chain.** New dependencies = new trust relationships. Who maintains
+             them? What happens if they're compromised? (See: log4j, colors.js, etc.)
+
+          I assume every system will be attacked. The question is: when it happens,
+          what's the worst case?
+
+      - role: user
+        content: "Evaluate this decision with that lens."
+
+  # ── The Synthesizer: makes the call ──
+  decision-maker:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [engineer-perspective, pm-perspective, finance-perspective, security-perspective]
+    prompt: |
+      You've heard from four perspectives on: $params.decision
+
+      Synthesize into a recommendation:
+      1. Where do perspectives AGREE? (high-confidence signals)
+      2. Where do they CONFLICT? (trade-offs to make explicit)
+      3. What's the recommended path? (with reasoning)
+      4. What are we accepting as risk? (be explicit about downsides)
+
+      Don't try to please everyone. Make a decisive recommendation with clear trade-offs.
+    inject:
+      - workflow:multi-perspective-analysis.engineer-perspective
+      - workflow:multi-perspective-analysis.pm-perspective
+      - workflow:multi-perspective-analysis.finance-perspective
+      - workflow:multi-perspective-analysis.security-perspective
+    budget: 0.40
+    turns: 5
+
+waves:
+  - name: "perspectives"
+    agents: [engineer-perspective, pm-perspective, finance-perspective, security-perspective]
+    parallel: true
+  - name: "synthesis"
+    agents: [decision-maker]
+
+circuit_breaker:
+  max_total_budget: 2.00
+  max_total_turns: 30
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate
+
+outputs:
+  recommendation:
+    from: decision-maker
+    format: markdown
+    save_to: ".arma/outputs/decision-analysis.md"
+
+meta:
+  tags: [analysis, decision-making, multi-perspective]

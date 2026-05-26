@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Example configuration file for Armament. Copy to ~/.arma/config.json and customize.",
+  
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-4-20250514",
+  
+  "theme": "red",
+  
+  "budget": {
+    "maxTokens": 1000000,
+    "maxCost": 100.0,
+    "warnThreshold": 0.8
+  },
+  
+  "providers": {
+    "anthropic": {
+      "apiKey": "YOUR_ANTHROPIC_API_KEY_HERE",
+      "models": {
+        "claude-sonnet-4-20250514": {},
+        "claude-opus-4-20250514": {},
+        "claude-3-5-sonnet-20241022": {},
+        "claude-3-5-haiku-20241022": {}
+      }
+    },
+    "openai": {
+      "apiKey": "YOUR_OPENAI_API_KEY_HERE",
+      "models": {
+        "gpt-4-turbo": {},
+        "gpt-4": {},
+        "gpt-3.5-turbo": {}
+      }
+    },
+    "bedrock": {
+      "region": "us-east-1",
+      "accessKeyId": "YOUR_AWS_ACCESS_KEY_ID",
+      "secretAccessKey": "YOUR_AWS_SECRET_ACCESS_KEY",
+      "models": {
+        "anthropic.claude-3-5-sonnet-20241022-v2:0": {},
+        "anthropic.claude-3-opus-20240229-v1:0": {}
+      }
+    },
+    "gemini": {
+      "apiKey": "YOUR_GOOGLE_API_KEY_HERE",
+      "models": {
+        "gemini-2.0-flash-exp": {},
+        "gemini-1.5-pro": {}
+      }
+    },
+    "ollama": {
+      "baseUrl": "http://localhost:11434",
+      "models": {
+        "llama3.1": {},
+        "mistral": {},
+        "codellama": {}
+      }
+    },
+    "openrouter": {
+      "apiKey": "YOUR_OPENROUTER_API_KEY_HERE",
+      "models": {
+        "anthropic/claude-3.5-sonnet": {},
+        "openai/gpt-4-turbo": {}
+      }
+    },
+    "replicate": {
+      "apiKey": "YOUR_REPLICATE_API_KEY_HERE",
+      "models": {
+        "meta/llama-2-70b-chat": {}
+      }
+    }
+  },
+  
+  "mcp": {
+    "servers": {
+      "filesystem": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"],
+        "env": {}
+      },
+      "github": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {
+          "GITHUB_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
+        }
+      }
+    }
+  },
+  
+  "ui": {
+    "width": 120,
+    "noColor": false,
+    "autoApprove": false,
+    "autoApprovePaths": []
+  },
+  
+  "session": {
+    "saveContexts": true,
+    "contextDir": "~/.arma/contexts",
+    "logLevel": "info",
+    "logFile": "~/.arma/logs/armament.log"
+  },
+  
+  "advanced": {
+    "maxConcurrentAgents": 10,
+    "agentTimeout": 300000,
+    "retryAttempts": 3,
+    "streamingEnabled": true
+  }
+}

@@ -1,0 +1,112 @@
+import type { ScriptContext, ScriptEvent, ScriptCommand, ScriptAST, FontConfig, DisplayConfig } from './ArmaScriptTypes.js';
+import { VALID_COMMANDS } from './ArmaScriptTypes.js';
+import { ArmaScriptParser } from './ArmaScriptParser.js';
+import { ArmaScriptExecutor } from './ArmaScriptExecutor.js';
+
+export type { ScriptContext, ScriptEvent, ScriptCommand, ScriptAST, FontConfig, DisplayConfig };
+
+export class ArmaScript {
+  private parser: ArmaScriptParser;
+  private executor: ArmaScriptExecutor;
+
+  constructor(ctx: ScriptContext) {
+    this.parser = new ArmaScriptParser();
+    this.executor = new ArmaScriptExecutor(ctx, this.parser);
+    const sessionId = Math.random().toString(36).slice(2, 10);
+    this.executor.setVariable('$channel', 'main');
+    this.executor.setVariable('$agent', 'default');
+    this.executor.setVariable('$model', '');
+    this.executor.setVariable('$turn', 0);
+    this.executor.setVariable('$session', sessionId);
+  }
+
+  parse(scriptText: string): ScriptAST {
+    return this.parser.parse(scriptText);
+  }
+
+  async run(scriptText: string): Promise<void> {
+    await this.executor.run(scriptText);
+  }
+
+  async execute(ast: ScriptAST): Promise<void> {
+    await this.executor.execute(ast);
+  }
+
+  getDisplay(): DisplayConfig {
+    return this.executor.getDisplay();
+  }
+
+  getFontSize(): number {
+    return this.executor.getFontSize();
+  }
+
+  setFontSize(size: number): void {
+    this.executor.setFontSize(size);
+  }
+
+  getFontFamily(): string {
+    return this.executor.getFontFamily();
+  }
+
+  setFontFamily(family: string): void {
+    this.executor.setFontFamily(family);
+  }
+
+  zoomIn(step: number = 2): void {
+    this.executor.zoomIn(step);
+  }
+
+  zoomOut(step: number = 2): void {
+    this.executor.zoomOut(step);
+  }
+
+  resetFont(): void {
+    this.executor.resetFont();
+  }
+
+  getEventHandlers(event: string): Array<{ body: string[]; once: boolean }> {
+    return this.executor.getEventHandlers(event);
+  }
+
+  async emit(event: { type: string; data?: any; timestamp?: number }): Promise<void> {
+    await this.executor.emit(event);
+  }
+
+  getMacros(): string[] {
+    return this.executor.getMacros();
+  }
+
+  setMaxIterations(max: number): void {
+    this.executor.setMaxIterations(max);
+  }
+
+  setFileLoader(loader: (path: string) => Promise<string>): void {
+    this.executor.setFileLoader(loader);
+  }
+
+  validate(scriptText: string): string[] {
+    const errors: string[] = [];
+    try {
+      this.parser.parse(scriptText);
+    } catch (err: any) {
+      errors.push(err.message);
+    }
+    return errors;
+  }
+
+  getCommands(): string[] {
+    return [...VALID_COMMANDS];
+  }
+
+  getVariable(name: string): any {
+    return this.executor.getVariable(name);
+  }
+
+  setVariable(name: string, value: any): void {
+    this.executor.setVariable(name, value);
+  }
+
+  dispose(): void {
+    this.executor.dispose();
+  }
+}

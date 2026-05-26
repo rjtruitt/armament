@@ -1,0 +1,134 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: MOCK TOOL RESULTS
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: Agent needs to "search" for something you already know the answer to.
+#          Or it needs to "read" a file that costs tokens to fetch every time.
+#          Or a previous workflow already got the result and you don't want to
+#          re-run the API call.
+#
+# Solution: Inject fabricated tool_use + tool_result messages. The agent
+#           believes it already called the tool and got the result. It proceeds
+#           from that point forward.
+#
+# Use cases:
+#   - Avoid re-running expensive MCP searches
+#   - Deterministic starting data for consistent outputs
+#   - Testing workflows without burning real API credits
+#   - Replaying prior workflow results into new agents
+# ──────────────────────────────────────────────────────────────────────────────
+name: mock-tool-results-pattern
+description: Agent believes it already ran tools and has results
+
+trigger:
+  type: manual
+
+params:
+  api_endpoints:
+    type: array
+    required: true
+    description: "Pre-known API endpoints to document"
+
+agents:
+  api-documenter:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: "Document each API endpoint with request/response examples."
+    tools: [read_file, grep]
+    budget: 0.50
+    turns: 10
+
+    synthetic_history:
+      - role: user
+        content: "Find all API endpoints in this codebase and document them."
+
+      - role: assistant
+        content: "I'll search for all API route definitions."
+        tool_use:
+          - id: "toolu_01"
+            name: grep
+            input: { pattern: "router\\.(get|post|put|delete|patch)", path: "src/" }
+
+      - role: tool_result
+        tool_use_id: "toolu_01"
+        content: |
+          src/routes/auth.ts:15:  router.post('/api/auth/login', loginHandler)
+          src/routes/auth.ts:28:  router.post('/api/auth/refresh', refreshHandler)
+          src/routes/auth.ts:34:  router.post('/api/auth/logout', logoutHandler)
+          src/routes/users.ts:12: router.get('/api/users', listUsers)
+          src/routes/users.ts:18: router.get('/api/users/:id', getUser)
+          src/routes/users.ts:24: router.post('/api/users', createUser)
+          src/routes/users.ts:30: router.put('/api/users/:id', updateUser)
+          src/routes/users.ts:36: router.delete('/api/users/:id', deleteUser)
+          src/routes/bookings.ts:14: router.get('/api/bookings', listBookings)
+          src/routes/bookings.ts:20: router.post('/api/bookings', createBooking)
+          src/routes/bookings.ts:28: router.get('/api/bookings/:id', getBooking)
+          src/routes/bookings.ts:34: router.put('/api/bookings/:id/status', updateStatus)
+
+      - role: assistant
+        content: |
+          I found 12 API endpoints across 3 route files. Let me now document each one
+          with request/response examples. I'll start with the auth endpoints since
+          they're foundational.
+
+      - role: user
+        content: "Good. Continue documenting them all."
+
+    # Agent continues from here, believing it already found the endpoints.
+    # It will document them in detail without wasting turns on grep.
+    # Cost: ~$0.00 for the "search" vs ~$0.05-0.10 for real tool calls.
+
+
+  # ── Another example: mocking [KB] search results ──────────────────────
+  knowledge-writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Write the architecture overview section based on your research."
+    tools: [mcp__kb__search]
+    budget: 0.50
+    turns: 8
+
+    synthetic_history:
+      - role: user
+        content: "Search [KB] for architecture docs about the booking system."
+
+      - role: assistant
+        content: "I'll search [KB] for architecture documentation."
+        tool_use:
+          - id: "toolu_02"
+            name: mcp__kb__search
+            input: { query: "booking system architecture" }
+
+      - role: tool_result
+        tool_use_id: "toolu_02"
+        content: |
+          Results:
+          1. "Booking System Architecture v2" (wiki, updated 2025-11-15)
+             - Microservice decomposition: booking-api, availability-svc, pricing-engine
+             - Event-driven via Kafka topics: booking.created, booking.confirmed, booking.cancelled
+             - Database: PostgreSQL (bookings), Redis (availability cache), DynamoDB (audit log)
+             - Auth: OAuth2 + JWT, scopes per service
+
+          2. "Booking API Migration Plan" (Google Doc, updated 2025-10-28)
+             - Migrating from monolith to microservices
+             - Phase 1: Extract availability (DONE)
+             - Phase 2: Extract pricing (IN PROGRESS)
+             - Phase 3: Event sourcing for bookings (PLANNED Q1 2026)
+
+          3. "Incident Post-Mortem: Booking Double-Charge" (wiki, 2025-09-12)
+             - Root cause: race condition in pricing-engine during high load
+             - Fix: optimistic locking on price calculations
+             - Action item: add idempotency keys to all payment calls
+
+      - role: assistant
+        content: |
+          I've found comprehensive architecture documentation. The booking system uses
+          a microservice architecture with three core services, event-driven communication
+          via Kafka, and is mid-migration from a monolith. Let me synthesize this into
+          the architecture overview.
+
+      - role: user
+        content: "Write the full architecture overview now."
+
+    # Agent writes the overview using "remembered" search results.
+    # Real [KB] search: ~$0.05 + latency. Mocked: $0.00 instant.
+    # More importantly: DETERMINISTIC. Same results every run.

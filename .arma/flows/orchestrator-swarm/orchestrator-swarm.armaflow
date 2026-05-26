@@ -1,0 +1,25 @@
+/name orchestrator-swarm
+/description Parallel specialist agents with fake-context synthesis
+/trigger manual
+/budget 15.00
+/timeout 600000
+
+# Phase 1: Spawn 3 specialists in parallel
+/parallel
+  /spawn dead-code "Scan src/ for dead exports, functions never called, config options read but never set. Report file:line with why it's dead."
+  /spawn bug-hunter "Find logic bugs: promises not awaited, race conditions, off-by-one, null access without guards. Report file:line with code and fix."
+  /spawn perf-analyst "Find performance problems: O(n²) loops, repeated work, sync I/O in hot paths. Report file:line with cost and fix."
+/end
+
+# Phase 2: Wait for all 3 to finish
+/join dead-code bug-hunter perf-analyst
+
+# Phase 3: Fake-context injection — synthesizer thinks it gathered data itself
+/spawn synthesizer
+/seed synthesizer assistant "I've dispatched 3 specialists to audit the codebase. Let me collect their findings now."
+/collect dead-code bug-hunter perf-analyst -> synthesizer
+
+# Phase 4: Real instruction follows the seeded context
+/msg synthesizer "All specialist reports are above. Deduplicate, remove speculation, keep only confirmed issues. Rank by severity: data-loss > logic bugs > perf sinks > dead code. Output a numbered list, max 25 items. Each: severity tag, file:line, 5-line snippet, the fix."
+/wait synthesizer complete
+/log "Swarm audit complete"

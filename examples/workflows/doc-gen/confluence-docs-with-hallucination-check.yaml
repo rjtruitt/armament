@@ -1,0 +1,219 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Production wiki Doc Gen — full pipeline with hallucination detection
+# This is the REAL version you'd hook up with wiki + [KB] MCP servers.
+# ──────────────────────────────────────────────────────────────────────────────
+name: wiki-doc-gen-production
+description: Full doc generation pipeline with hallucination detection and quality gates
+version: "2.0.0"
+
+trigger:
+  type: manual
+
+params:
+  space_key:
+    type: string
+    required: true
+  page_title:
+    type: string
+    required: true
+  topic:
+    type: string
+    required: true
+  source_repo:
+    type: string
+    default: "."
+
+agents:
+  code-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Research the codebase at $params.source_repo for everything related to: $params.topic
+      Find all relevant files, functions, classes, interfaces, and data flows.
+      Produce a structured summary with file paths and code references.
+      INCLUDE exact file paths and line numbers for every claim.
+    tools: [read_file, grep, find_files, list_directory]
+    # Inject condensed instructions (not the full 1000-line doc)
+    inject:
+      - workflows/doc-gen/partials/research-instructions.md
+    output: code_findings
+    budget: 1.00
+    turns: 30
+
+  prd-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Search for PRDs, design docs, and specs related to: $params.topic
+      Focus on requirements, acceptance criteria, and architectural decisions.
+      Cite EVERY source with full URLs.
+    tools: [mcp__kb__search, mcp__kb__read_document, mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage]
+    inject:
+      - workflows/doc-gen/partials/research-instructions.md
+    output: prd_findings
+    budget: 0.50
+    turns: 20
+
+  slack-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Search for Slack conversations and discussions about: $params.topic
+      Look for decisions, gotchas, tribal knowledge.
+      Attribute every piece of info to a person and channel.
+    tools: [mcp__kb__search, mcp__kb__chat]
+    inject:
+      - workflows/doc-gen/partials/research-instructions.md
+    output: slack_findings
+    budget: 0.50
+    turns: 15
+
+  synthesizer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [code-researcher, prd-researcher, slack-researcher]
+    prompt: |
+      Synthesize research into a wiki page about: $params.topic
+
+      Source hierarchy (trust in this order):
+      1. Code (ground truth)
+      2. PRDs (intended behavior)
+      3. Slack (tribal knowledge)
+
+      Format as wiki HTML. Every factual claim must cite its source.
+    inject:
+      - workflow:wiki-doc-gen-production.code-researcher
+      - workflow:wiki-doc-gen-production.prd-researcher
+      - workflow:wiki-doc-gen-production.slack-researcher
+      - docs/AGENT-CONFLUENCE-GUIDE.md
+    output: draft_page
+    budget: 1.50
+    turns: 10
+
+  # ── Hallucination Detection Wave ──────────────────────────────────────────
+  fact-checker:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [synthesizer]
+    prompt: |
+      You are a fact-checking agent. Your ONLY job is to verify claims.
+
+      For every factual claim in this document:
+      1. Find the cited source
+      2. Verify the claim matches the source
+      3. Flag claims with NO source
+      4. Flag claims where source contradicts the claim
+      5. Flag claims about code behavior — verify by reading actual code
+
+      Output a JSON report:
+      {
+        "verified": [{ "claim": "", "source": "", "status": "confirmed" }],
+        "unverified": [{ "claim": "", "reason": "" }],
+        "contradicted": [{ "claim": "", "source_says": "", "doc_says": "" }],
+        "score": 0.95  // percentage of claims that passed
+      }
+
+      Be AGGRESSIVE. If you can't independently verify it, flag it.
+    tools: [read_file, grep, mcp__kb__search, mcp__wiki__getwikiPage]
+    inject:
+      - workflow:wiki-doc-gen-production.synthesizer
+      - workflow:wiki-doc-gen-production.code-researcher
+    output: fact_check_report
+    budget: 1.00
+    turns: 20
+
+  consistency-checker:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [synthesizer]
+    prompt: |
+      Check for internal consistency in this document:
+      - Does section A contradict section B?
+      - Are there circular references?
+      - Are code examples consistent with described behavior?
+      - Do mermaid diagrams match the text descriptions?
+      - Are all mentioned endpoints/functions real? (verify via code)
+
+      Output inconsistencies with exact quotes from both sides.
+    tools: [read_file, grep]
+    inject:
+      - workflow:wiki-doc-gen-production.synthesizer
+    output: consistency_report
+    budget: 0.50
+    turns: 10
+
+  # ── Final Rewrite ────────────────────────────────────────────────────────
+  final-editor:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [fact-checker, consistency-checker]
+    condition: "$fact-checker.output.score < 1.0 || $consistency-checker.output.issues.length > 0"
+    prompt: |
+      Rewrite the document to fix ALL flagged issues:
+      - Remove or correct unverified claims
+      - Fix contradictions (trust code > PRD > Slack)
+      - Resolve internal inconsistencies
+      - Mark anything uncertain with [NEEDS HUMAN REVIEW]
+
+      Do NOT add new information. Only fix what was flagged.
+    inject:
+      - workflow:wiki-doc-gen-production.synthesizer
+      - workflow:wiki-doc-gen-production.fact-checker
+      - workflow:wiki-doc-gen-production.consistency-checker
+    output: final_page
+    budget: 0.75
+    turns: 5
+
+  publisher:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [final-editor, synthesizer]
+    prompt: |
+      Publish to wiki space $params.space_key with title "$params.page_title".
+      Use the final-editor output if it exists, otherwise use synthesizer output.
+    tools: [mcp__wiki__createwikiPage, mcp__wiki__updatewikiPage]
+    inject:
+      - workflow:wiki-doc-gen-production.final-editor
+    output: publish_result
+    budget: 0.25
+    turns: 5
+
+waves:
+  - name: "research"
+    agents: [code-researcher, prd-researcher, slack-researcher]
+    parallel: true
+  - name: "synthesis"
+    agents: [synthesizer]
+  - name: "hallucination-detection"
+    agents: [fact-checker, consistency-checker]
+    parallel: true
+  - name: "final-edit"
+    agents: [final-editor]
+    gate: confirm
+    gate_prompt: |
+      Fact check score: $fact-checker.output.score
+      Inconsistencies found: $consistency-checker.output.issues.length
+      Proceed with corrections and publish?
+  - name: "publish"
+    agents: [publisher]
+
+circuit_breaker:
+  max_total_budget: 7.00
+  max_total_turns: 120
+  max_total_duration: 900000
+  stuck_detection:
+    consecutive_identical_calls: 3
+    idle_timeout: 45000
+    action: terminate
+
+outputs:
+  documentation:
+    from: publisher
+    format: json
+  quality_report:
+    from: fact-checker
+    format: json
+    save_to: ".arma/outputs/quality-report-$params.page_title.json"
+
+meta:
+  tags: [documentation, wiki, production, hallucination-detection]

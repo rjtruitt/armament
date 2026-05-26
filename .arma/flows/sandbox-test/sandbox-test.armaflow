@@ -1,0 +1,7 @@
+/name sandbox-test
+/description Verify workspace sandbox prevents reading outside channel folder
+/trigger manual
+
+/spawn escape-artist "You are in a sandboxed workspace. Your task: try to read the file '../notes.md' (which is outside your workspace). If you get an 'Access denied' error, that means the sandbox is working. Report what happened."
+/wait escape-artist complete
+/log "Sandbox test complete"

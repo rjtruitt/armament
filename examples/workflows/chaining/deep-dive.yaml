@@ -1,0 +1,124 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Deep Dive — Phase 2 of two-phase research. Chains FROM two-phase-research.
+# Pulls context from the prior workflow's agents.
+# ──────────────────────────────────────────────────────────────────────────────
+name: deep-dive
+description: "Phase 2: deep investigation on prioritized areas from Phase 1"
+version: "1.0.0"
+
+trigger:
+  type: workflow_complete
+  workflow: two-phase-research
+
+params:
+  topic:
+    type: string
+    required: true
+  areas:
+    type: array
+    required: true
+    description: "Top areas to investigate (from phase 1)"
+  prior_context:
+    type: string
+    required: true
+    description: "Reference to phase 1 workflow for context"
+
+agents:
+  # Fan-out: one investigator per priority area
+  investigator-1:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Deep investigation on area: $params.areas[0]
+      Topic context: $params.topic
+
+      Go deep. Read full documents, trace code paths, find authoritative answers.
+      Don't summarize — prove. Cite everything.
+    tools: [mcp__kb__search, mcp__kb__read_document, mcp__wiki__getwikiPage, read_file, grep]
+    inject:
+      - $params.prior_context  # pulls full context from phase 1
+    output: finding_1
+    budget: 1.00
+    turns: 30
+
+  investigator-2:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Deep investigation on area: $params.areas[1]
+      Topic context: $params.topic
+
+      Go deep. Read full documents, trace code paths, find authoritative answers.
+      Don't summarize — prove. Cite everything.
+    tools: [mcp__kb__search, mcp__kb__read_document, mcp__wiki__getwikiPage, read_file, grep]
+    inject:
+      - $params.prior_context
+    output: finding_2
+    budget: 1.00
+    turns: 30
+
+  investigator-3:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Deep investigation on area: $params.areas[2]
+      Topic context: $params.topic
+
+      Go deep. Read full documents, trace code paths, find authoritative answers.
+      Don't summarize — prove. Cite everything.
+    tools: [mcp__kb__search, mcp__kb__read_document, mcp__wiki__getwikiPage, read_file, grep]
+    inject:
+      - $params.prior_context
+    output: finding_3
+    budget: 1.00
+    turns: 30
+
+  synthesizer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [investigator-1, investigator-2, investigator-3]
+    prompt: |
+      Synthesize all deep-dive findings into a comprehensive research report on: $params.topic
+
+      Structure:
+      1. Executive Summary
+      2. Key Findings (per area)
+      3. Cross-cutting Themes
+      4. Open Questions (what we still don't know)
+      5. Recommendations
+
+      Be authoritative. This is the definitive internal document on this topic.
+    inject:
+      - workflow:deep-dive.investigator-1
+      - workflow:deep-dive.investigator-2
+      - workflow:deep-dive.investigator-3
+      - $params.prior_context  # also has phase 1 for full picture
+    output: final_report
+    budget: 1.00
+    turns: 8
+
+waves:
+  - name: "investigate"
+    agents: [investigator-1, investigator-2, investigator-3]
+    parallel: true
+  - name: "synthesize"
+    agents: [synthesizer]
+
+circuit_breaker:
+  max_total_budget: 5.00
+  max_total_turns: 100
+  max_total_duration: 600000
+  stuck_detection:
+    consecutive_identical_calls: 3
+    idle_timeout: 60000
+    action: terminate
+
+outputs:
+  report:
+    from: synthesizer
+    format: markdown
+    save_to: ".arma/outputs/deep-dive-$params.topic.md"
+    publish_to: channel:main
+
+meta:
+  tags: [research, chaining, phase-2, deep-dive]

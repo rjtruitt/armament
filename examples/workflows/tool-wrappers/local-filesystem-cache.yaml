@@ -1,0 +1,106 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: LOCAL FILESYSTEM CACHE
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: Every MCP call to read a file costs tokens (the LLM processes the
+#          full response). For repos you have cloned locally, this is waste.
+#
+# Solution: Wrap file-read tools to check local clones first. If the file
+#           exists locally and is on the right branch → read from disk.
+#           The LLM never knows the difference.
+#
+# Cost savings: ~$0.01 per file read avoided. For a workflow that reads
+#               50 files per run, that's $0.50/run → $3/day → $90/month saved.
+#
+# Prerequisites:
+#   - Local repo clones at known paths
+#   - Repos pulled to the correct branch before workflow runs
+#   - (Optional) A prefetch script that does `git pull` before the workflow
+# ──────────────────────────────────────────────────────────────────────────────
+name: local-filesystem-cache-demo
+description: Read from local repo clones instead of GitHub MCP API
+
+trigger:
+  type: manual
+
+params:
+  repo:
+    type: string
+    default: "myorg/myrepo"
+  file_path:
+    type: string
+    default: "src/main.ts"
+
+wrappers:
+  - name: local-repo-read
+    description: "Read from local clone when available"
+    tools:
+      - mcp__github__get_file_contents
+    priority: 10
+    config:
+      # Map remote repos to local paths
+      repo_map:
+        myorg/myrepo: ~/projects/myrepo
+        myorg/shared-lib: ~/projects/shared-lib
+        myorg/infra: ~/projects/infra
+    handler: |
+      const localBase = config.repo_map[ctx.inputs.repo || ctx.inputs.owner + '/' + ctx.inputs.repo];
+      if (!localBase) return { type: 'passthrough' };
+
+      const fullPath = `${localBase}/${ctx.inputs.path}`;
+      try {
+        const content = await readFile(fullPath, 'utf-8');
+        return {
+          type: 'replace',
+          output: {
+            type: 'file',
+            name: ctx.inputs.path.split('/').pop(),
+            path: ctx.inputs.path,
+            content: content,
+            encoding: 'utf-8',
+            _source: 'local-cache',
+            _localPath: fullPath
+          }
+        };
+      } catch {
+        // File doesn't exist locally, fall through to real API
+        return { type: 'passthrough' };
+      }
+
+  - name: local-code-search
+    description: "Use grep on local clone instead of GitHub search API"
+    tools:
+      - mcp__github__search_code
+    priority: 10
+    config:
+      repo_map:
+        myorg/myrepo: ~/projects/myrepo
+    handler: |
+      const localBase = config.repo_map[ctx.inputs.repo];
+      if (!localBase) return { type: 'passthrough' };
+
+      const query = ctx.inputs.query || ctx.inputs.q;
+      try {
+        const result = await exec(`grep -rn "${query}" ${localBase}/src --include="*.ts" --include="*.js" | head -50`);
+        const matches = result.split('\n').filter(Boolean).map(line => {
+          const [filePath, ...rest] = line.split(':');
+          return { path: filePath.replace(localBase + '/', ''), match: rest.join(':') };
+        });
+        return { type: 'replace', output: { items: matches, total_count: matches.length, _source: 'local-grep' } };
+      } catch {
+        return { type: 'passthrough' };
+      }
+
+agents:
+  reader:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Read the file at $params.file_path in repo $params.repo.
+      Summarize what it does.
+    tools: [mcp__github__get_file_contents, mcp__github__search_code]
+    budget: 0.50
+    turns: 5
+
+# The agent calls mcp__github__get_file_contents normally.
+# The wrapper intercepts it, reads from ~/projects/myrepo/src/main.ts instead.
+# Agent gets the file content. Never hits GitHub API. Zero API cost for that call.

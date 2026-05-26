@@ -1,0 +1,44 @@
+{
+  "name": "code-audit",
+  "description": "Spawns an orchestrator agent that fans out 4 specialized sub-agents (dead-code, bugs, perf, consistency) and synthesizes a ranked report of actionable findings",
+  "trigger": {
+    "type": "manual"
+  },
+  "nodes": [
+    {
+      "id": "auditor-0",
+      "type": "spawn",
+      "config": {
+        "agentName": "auditor",
+        "task": "You are a code audit orchestrator. Your job is to thoroughly analyze the codebase in this project directory and produce a ranked list of actionable findings."
+      }
+    },
+    {
+      "id": "wait-1",
+      "type": "wait",
+      "config": {
+        "agentName": "auditor"
+      }
+    },
+    {
+      "id": "task-2",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Code audit complete — check #auditor for results"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "auditor-0",
+      "to": "wait-1",
+      "label": "wait"
+    },
+    {
+      "from": "wait-1",
+      "to": "task-2",
+      "label": "chain"
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+import type { CommandRegistration, CommandContext } from '../CommandDispatch.js';
+
+/** Get session commands.
+ */
+export function getSessionCommands(): CommandRegistration[] {
+  return [
+    {
+      name: 'help',
+      description: 'Show available commands',
+      handler: (_args, _ctx) => ({
+        handled: true,
+        output: 'Available commands: /help, /join, /part, /spawn, /kill, /list, /switch, /msg, /whois, /who, /quit',
+      }),
+    },
+    {
+      name: 'quit',
+      aliases: ['exit', 'q'],
+      description: 'Exit armament',
+      handler: (_args, ctx) => {
+        ctx.stop();
+        return { handled: true };
+      },
+    },
+    {
+      name: 'clear',
+      description: 'Clear screen',
+      handler: (_args, ctx) => {
+        ctx.getMessages().length = 0;
+        ctx.setTurnCount(0);
+        return { handled: true };
+      },
+    },
+    {
+      name: 'clear-session',
+      description: 'Clear persisted session data',
+      handler: (_args, ctx) => {
+        ctx.clearSession();
+        return { handled: true };
+      },
+    },
+    {
+      name: 'status',
+      description: 'Show current status',
+      handler: (_args, ctx) => {
+        const model = ctx.channelAgents.get(ctx.activeChannel ?? '')?.model ?? ctx.getCurrentModel();
+        const turns = ctx.getTurnCount();
+        return { handled: true, output: `Status: running | Model: ${model} | Turns: ${turns}` };
+      },
+    },
+    {
+      name: 'cost',
+      description: 'Show estimated cost',
+      handler: (_args, ctx) => {
+        const stats = ctx.getUsageStats();
+        return { handled: true, output: `Total cost: $${stats.estimatedCost.toFixed(4)}` };
+      },
+    },
+    {
+      name: 'context',
+      description: 'Show context usage',
+      handler: (_args, ctx) => {
+        const usage = ctx.getContextUsage();
+        return { handled: true, output: `Context: ${usage.percentage}% used (${usage.used}/${usage.capacity})` };
+      },
+    },
+    {
+      name: 'history',
+      description: 'Show message history',
+      handler: (_args, ctx) => {
+        const msgs = ctx.getMessages();
+        const output = msgs.map((m: any) => `[${m.role}] ${m.content.substring(0, 50)}`).join('\n') || 'No messages';
+        return { handled: true, output };
+      },
+    },
+    {
+      name: 'tools',
+      description: 'Show available tools',
+      handler: (_args, ctx) => {
+        const lines: string[] = [];
+        const enabled = ctx.getEnabledTools();
+        if (enabled.length > 0) {
+          lines.push('── built-in ──');
+          for (const t of enabled) lines.push(`  ${t}`);
+        }
+        for (const server of ctx.getMcpServers().values()) {
+          if (server.status === 'connected' && server.tools.length > 0) {
+            lines.push(`── ${server.name} (${server.tools.length}) ──`);
+            for (const t of server.tools) {
+              lines.push(`  ${t.name}${t.description ? `  ${t.description}` : ''}`);
+            }
+          }
+        }
+        return { handled: true, output: lines.length > 0 ? lines.join('\n') : 'No tools available' };
+      },
+    },
+    {
+      name: 'undo',
+      description: 'Undo last action',
+      handler: (_args, ctx) => {
+        const turnCount = ctx.getTurnCount();
+        if (turnCount > 0) {
+          const messages = ctx.getMessages();
+          const filtered = messages.filter((m: any) => m.metadata?.turnNumber !== turnCount);
+          messages.length = 0;
+          messages.push(...filtered);
+          ctx.setTurnCount(turnCount - 1);
+        }
+        return { handled: true };
+      },
+    },
+    {
+      name: 'retry',
+      description: 'Retry last message',
+      handler: (_args, _ctx) => ({ handled: true }),
+    },
+    {
+      name: 'plan',
+      description: 'Show current plan',
+      handler: (_args, _ctx) => ({ handled: true, output: 'Plan: 0 steps' }),
+    },
+    {
+      name: 'run',
+      description: 'Run a command',
+      handler: (_args, _ctx) => ({ handled: true }),
+    },
+    {
+      name: 'compact',
+      aliases: ['compress'],
+      description: 'Compact context window',
+      handler: (_args, ctx) => {
+        const channel = ctx.activeChannel ?? '';
+        const agent = ctx.channelAgents.get(channel);
+        if (agent) {
+          const usage = agent.getContextUsage();
+          ctx.tui?.writeMessage('system', '*',
+            `Compacting ${channel}... (${usage.current}/${usage.max} tokens, ${usage.percent}%)`, channel);
+          ctx.tui?.startCompacting(channel);
+          agent.compact(true).then((result) => {
+            ctx.tui?.stopCompacting();
+            if (result) {
+              const after = agent.getContextUsage();
+              ctx.tui?.writeMessage('system', '*',
+                `Compacted: ${usage.current} → ${after.current} tokens (saved ${usage.current - after.current})`, channel);
+            } else {
+              ctx.tui?.writeMessage('system', '*', 'Nothing to compact', channel);
+            }
+          });
+        } else {
+          ctx.tui?.writeMessage('system', '*', 'No agent on this channel', ctx.activeChannel ?? '#control');
+        }
+        return { handled: true };
+      },
+    },
+    {
+      name: 'stats',
+      description: 'Show session stats',
+      handler: (_args, ctx) => {
+        const stats = ctx.getUsageStats();
+        return { handled: true, output: `Stats: avg latency ${stats.avgLatencyMs}ms, ${stats.requestCount} requests` };
+      },
+    },
+  ];
+}

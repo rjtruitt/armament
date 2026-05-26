@@ -1,0 +1,122 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Codebase Onboarding — generates a comprehensive onboarding guide for a repo
+# ──────────────────────────────────────────────────────────────────────────────
+name: codebase-onboarding
+description: Generate an onboarding guide for a new engineer joining a codebase
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  repo_path:
+    type: string
+    required: true
+  team:
+    type: string
+    description: "Team name for context"
+  focus:
+    type: string
+    default: "full"
+    description: "full | backend | frontend | infra"
+
+agents:
+  structure-mapper:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Map the high-level structure of $params.repo_path:
+      - Directory layout and what each top-level dir contains
+      - Entry points (main files, index files)
+      - Build system and scripts
+      - Config files and their purpose
+      - Test structure
+
+      Produce a tree with annotations.
+    tools: [read_file, list_directory, find_files]
+    output: structure
+    budget: 0.50
+    turns: 20
+
+  architecture-analyzer:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Analyze the architecture of $params.repo_path:
+      - Design patterns used
+      - Key abstractions and interfaces
+      - Data flow (how does data enter, transform, exit?)
+      - External dependencies and integrations
+      - Database/storage patterns
+
+      Focus area: $params.focus
+    tools: [read_file, grep, find_files]
+    output: architecture
+    budget: 0.75
+    turns: 25
+
+  conventions-detector:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Detect coding conventions in $params.repo_path:
+      - Naming conventions
+      - File organization patterns
+      - Error handling approach
+      - Logging patterns
+      - Testing patterns (unit vs integration vs e2e)
+      - PR/commit conventions (check recent git log)
+    tools: [read_file, grep, find_files]
+    output: conventions
+    budget: 0.30
+    turns: 15
+
+  guide-writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [structure-mapper, architecture-analyzer, conventions-detector]
+    prompt: |
+      Write a comprehensive onboarding guide for a new engineer joining $params.team.
+
+      Sections:
+      1. Quick Start (clone, install, run in < 5 minutes)
+      2. Architecture Overview (with diagrams described in mermaid)
+      3. Key Concepts (the 5 things you MUST understand)
+      4. Directory Guide (where to find things)
+      5. Development Workflow (how to make changes)
+      6. Testing Guide (how to write and run tests)
+      7. Common Tasks (recipes for frequent operations)
+      8. Gotchas (things that trip people up)
+      9. Key Files to Read First (ordered reading list)
+
+      Write for someone smart but unfamiliar with this specific codebase.
+    inject:
+      - workflow:codebase-onboarding.structure-mapper
+      - workflow:codebase-onboarding.architecture-analyzer
+      - workflow:codebase-onboarding.conventions-detector
+    output: onboarding_guide
+    budget: 1.00
+    turns: 8
+
+waves:
+  - name: "analysis"
+    agents: [structure-mapper, architecture-analyzer, conventions-detector]
+    parallel: true
+  - name: "writing"
+    agents: [guide-writer]
+
+circuit_breaker:
+  max_total_budget: 3.00
+  max_total_turns: 80
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate
+
+outputs:
+  guide:
+    from: guide-writer
+    format: markdown
+    save_to: ".arma/outputs/onboarding-guide.md"
+
+meta:
+  tags: [research, onboarding, documentation]

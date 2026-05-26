@@ -1,0 +1,100 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ArmaFlow Workflow Schema Reference
+# ──────────────────────────────────────────────────────────────────────────────
+# All workflow files follow this structure. Only `name` and `agents` are required.
+
+name: string                    # unique identifier for this workflow
+description: string             # human-readable purpose
+version: string                 # semver, optional
+
+# ── Trigger ──────────────────────────────────────────────────────────────────
+trigger:
+  type: manual | cron | webhook | event | workflow_complete
+  cron: "*/5 * * * *"          # cron expression (if type: cron)
+  webhook: /path                # webhook endpoint (if type: webhook)
+  event: event_name             # event bus event (if type: event)
+  workflow: workflow-id          # fires when another workflow completes (if type: workflow_complete)
+
+# ── Parameters ───────────────────────────────────────────────────────────────
+params:
+  param_name:
+    type: string | number | boolean | array
+    default: value
+    required: true | false
+    description: "what this param does"
+
+# ── Agents ───────────────────────────────────────────────────────────────────
+# Each agent is a node in the execution graph.
+agents:
+  agent-name:
+    provider: bedrock | anthropic | openai | ollama | gemini | openrouter
+    model: model-id             # optional, uses provider default if omitted
+    prompt: "instruction text"  # the task prompt
+    system: "system prompt"     # optional system prompt override
+    depends_on: [agent-a, agent-b]  # waits for these to complete first
+    inject:                     # files/context injected into agent
+      - path/to/file.md
+      - workflow:other-workflow.agent-name  # cross-workflow context
+      - channel:channel-name               # from a live/saved channel
+      - search:"term" --context 5          # grep sessions, ±5 turns
+    pin_files:                  # files re-injected after compaction (survive context reset)
+      - path/to/important.md
+      - docs/architecture.md
+    tools: [tool_a, tool_b]     # specific tools to load
+    tool_categories: [mcp, filesystem]  # tool categories to load
+    output: variable_name       # capture agent's final output as variable
+    retry:
+      max: 3
+      backoff: exponential | linear | fixed
+      delay: 1000               # ms between retries
+    budget: 0.50                # max USD this agent can spend
+    turns: 20                   # max conversation turns
+    timeout: 300000             # ms before forced termination
+    condition: "$prev.status == 'success'"  # only run if condition met
+    on_failure: skip | halt | retry | fallback:agent-name
+
+# ── Waves ────────────────────────────────────────────────────────────────────
+# Optional explicit ordering. If omitted, execution order is inferred from depends_on.
+# Waves run sequentially; agents within a wave run in parallel.
+waves:
+  - name: "research phase"
+    agents: [researcher-1, researcher-2, researcher-3]
+    parallel: true              # default true
+    gate: confirm | auto        # require approval before next wave
+    gate_prompt: "Research complete. Proceed?"
+  - name: "synthesis"
+    agents: [synthesizer]
+    inject_from_wave: "research phase"  # pass all outputs from prev wave
+
+# ── Circuit Breaker ──────────────────────────────────────────────────────────
+circuit_breaker:
+  max_total_budget: 5.00        # USD, kills entire workflow if exceeded
+  max_total_turns: 200          # across all agents combined
+  max_total_duration: 600000    # ms for entire workflow
+  stuck_detection:
+    consecutive_identical_calls: 3    # same tool + same args N times = stuck
+    idle_timeout: 60000               # agent produces no output for N ms
+    action: terminate | warn | pause  # what to do when stuck detected
+
+# ── Outputs ──────────────────────────────────────────────────────────────────
+outputs:
+  result_name:
+    from: agent-name            # which agent's output
+    format: text | json | markdown
+    save_to: path/to/output.md  # optional file write
+    publish_to: channel:main    # optional channel broadcast
+
+# ── Hooks ────────────────────────────────────────────────────────────────────
+hooks:
+  on_start: "/log Workflow started"
+  on_complete: "/notify main 'Workflow finished: $workflow.name'"
+  on_failure: "/msg oncall 'Workflow failed: $error'"
+  on_agent_complete: "/log '$agent.name completed in $agent.duration ms'"
+
+# ── Metadata (for visual builder, ignored by executor) ───────────────────────
+meta:
+  layout:
+    agent-name: { x: 100, y: 50 }
+  color:
+    agent-name: "#ff6b6b"
+  tags: [production, hourly, documentation]

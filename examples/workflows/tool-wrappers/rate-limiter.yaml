@@ -1,0 +1,120 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: RATE LIMITER / THROTTLE
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: External APIs have rate limits. If your workflow spawns multiple
+#          agents hitting the same API concurrently, you'll get 429s.
+#
+# Solution: A wrapper that queues requests and enforces a max-per-minute rate.
+#           Requests that exceed the limit wait in a queue instead of failing.
+#
+# Also useful for:
+#   - APIs with per-second limits (GitHub: 5000/hr, [KB]: custom)
+#   - Protecting shared resources from thundering herd
+#   - Adding backoff without changing agent code
+# ──────────────────────────────────────────────────────────────────────────────
+name: rate-limiter-demo
+description: Enforce rate limits on external API calls
+
+trigger:
+  type: manual
+
+wrappers:
+  - name: github-rate-limit
+    description: "Max 30 GitHub API calls per minute"
+    tools:
+      - "mcp__github__*"
+    priority: 5
+    config:
+      maxPerMinute: 30
+      retryAfterMs: 2000
+      maxRetries: 3
+    handler: |
+      const now = Date.now();
+      const windowStart = now - 60000;
+      const recentCalls = state.callLog.filter(t => t > windowStart);
+
+      if (recentCalls.length >= config.maxPerMinute) {
+        // Wait for the oldest call to fall out of the window
+        const waitMs = recentCalls[0] - windowStart + 100;
+        await sleep(waitMs);
+      }
+
+      state.callLog.push(now);
+      return { type: 'passthrough' };
+
+  - name: [KB]-rate-limit
+    description: "Max 5 [KB] calls per minute (strict API limit)"
+    tools:
+      - "mcp__[KB]_default__*"
+    priority: 5
+    config:
+      maxPerMinute: 5
+      burstAllowed: 2
+    handler: |
+      const now = Date.now();
+      const windowStart = now - 60000;
+      const recentCalls = state.callLog.filter(t => t > windowStart);
+
+      if (recentCalls.length >= config.maxPerMinute) {
+        const waitMs = Math.max(0, 60000 - (now - recentCalls[0])) + 500;
+        await sleep(waitMs);
+      }
+
+      state.callLog.push(now);
+      return { type: 'passthrough' };
+
+  - name: wiki-rate-limit
+    description: "Max 10 wiki calls per minute"
+    tools:
+      - "mcp__wiki__*wiki*"
+      - "mcp__wiki__*wiki*"
+    priority: 5
+    config:
+      maxPerMinute: 10
+    handler: |
+      // Simple token bucket
+      if (state.tokens <= 0) {
+        const elapsed = Date.now() - state.lastRefill;
+        const newTokens = Math.floor(elapsed / 6000); // 1 token per 6 seconds = 10/min
+        state.tokens = Math.min(config.maxPerMinute, state.tokens + newTokens);
+        state.lastRefill = Date.now();
+        if (state.tokens <= 0) {
+          await sleep(6000);
+          state.tokens = 1;
+        }
+      }
+      state.tokens--;
+      return { type: 'passthrough' };
+
+agents:
+  parallel-researcher-1:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Research system A using GitHub and wiki"
+    tools: [mcp__github__search_code, mcp__wiki__getwikiPage]
+    budget: 1.00
+    turns: 20
+
+  parallel-researcher-2:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Research system B using GitHub and [KB]"
+    tools: [mcp__github__get_file_contents, mcp__kb__search]
+    budget: 1.00
+    turns: 20
+
+  parallel-researcher-3:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Research system C using all available tools"
+    tools: [mcp__github__search_code, mcp__kb__search, mcp__wiki__getwikiPage]
+    budget: 1.00
+    turns: 20
+
+waves:
+  - name: "parallel-research"
+    agents: [parallel-researcher-1, parallel-researcher-2, parallel-researcher-3]
+    parallel: true
+
+# All three agents run in parallel, but the rate limiter ensures they don't
+# collectively exceed API limits. No 429 errors, no agent code changes needed.

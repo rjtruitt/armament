@@ -1,0 +1,208 @@
+{
+  "name": "code-audit-fake",
+  "description": "Spawns an orchestrator + 4 real A2A workers, then seeds the orchestrator with fake history so it thinks IT spawned them. Workers complete normally and results flow back through the A2A pipeline.",
+  "trigger": {
+    "type": "manual"
+  },
+  "nodes": [
+    {
+      "id": "auditor-0",
+      "type": "spawn",
+      "config": {
+        "agentName": "auditor",
+        "role": "orchestrator"
+      }
+    },
+    {
+      "id": "parallel-1",
+      "type": "parallel",
+      "config": {}
+    },
+    {
+      "id": "dead-code-2",
+      "type": "spawn",
+      "config": {
+        "agentName": "dead-code",
+        "task": "Scan all src/ directories. Find exports nothing imports, functions never called, config options read but never set, event listeners registered but never triggered, type definitions with zero usage. Trace imports with read_file and list_directory. Report ONLY confirmed dead symbols: file:line | symbol | reason. Skip tests and node_modules.",
+        "role": "worker"
+      }
+    },
+    {
+      "id": "bug-hunter-3",
+      "type": "spawn",
+      "config": {
+        "agentName": "bug-hunter",
+        "task": "Find logic bugs: missing awaits on async calls, race conditions on shared mutable state, off-by-one errors, unguarded null access, Map.get without nullish handling, event listener leaks, unclosed resources. Report: file:line, 3-5 line snippet, what breaks, the fix. Only confirmed issues.",
+        "role": "worker"
+      }
+    },
+    {
+      "id": "perf-analyst-4",
+      "type": "spawn",
+      "config": {
+        "agentName": "perf-analyst",
+        "task": "Find performance problems: O(n^2) loops, repeated computation in hot paths, string concat in loops, full rebuilds where partial updates exist, sync I/O on hot paths, regex in loops. Report: file:line, code, estimated cost, the fix.",
+        "role": "worker"
+      }
+    },
+    {
+      "id": "consistency-checker-5",
+      "type": "spawn",
+      "config": {
+        "agentName": "consistency-checker",
+        "task": "Find interface mismatches: Map key format differences (with/without # prefix), type assertions masking errors, events emitted but never listened to, config name mismatches between set/read, function signatures disagreeing with callers. Report file:line for BOTH sides.",
+        "role": "worker"
+      }
+    },
+    {
+      "id": "end-6",
+      "type": "end",
+      "config": {}
+    },
+    {
+      "id": "auditor-7",
+      "type": "task",
+      "config": {
+        "action": "seed",
+        "target": "auditor",
+        "role": "user",
+        "content": "Perform a comprehensive code audit of this project. Find dead code, logic bugs, performance issues, and interface mismatches. Spawn workers for each category and synthesize their results into a ranked report."
+      }
+    },
+    {
+      "id": "auditor-8",
+      "type": "task",
+      "config": {
+        "action": "seed",
+        "target": "auditor",
+        "role": "assistant",
+        "content": "I'll spawn 4 specialized worker agents to audit different aspects of the codebase in parallel, then synthesize their findings into a ranked report.nnSpawning workers:n1. dead-code — scanning for unused exports, dead functions, orphaned typesn2. bug-hunter — finding logic bugs, race conditions, missing awaitsn3. perf-analyst — identifying performance bottlenecksn4. consistency-checker — finding interface/contract mismatchesnnAll 4 workers are running. I'll wait for their results and produce a final synthesis."
+      }
+    },
+    {
+      "id": "join-9",
+      "type": "join",
+      "config": {
+        "agentNames": [
+          "auditor"
+        ]
+      }
+    },
+    {
+      "id": "task-10",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Fake-context audit complete — check #auditor for synthesized results"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "auditor-0",
+      "to": "parallel-1",
+      "label": "chain"
+    },
+    {
+      "from": "auditor-0",
+      "to": "dead-code-2",
+      "label": "child"
+    },
+    {
+      "from": "parallel-1",
+      "to": "dead-code-2"
+    },
+    {
+      "from": "auditor-0",
+      "to": "bug-hunter-3",
+      "label": "child"
+    },
+    {
+      "from": "dead-code-2",
+      "to": "bug-hunter-3"
+    },
+    {
+      "from": "auditor-0",
+      "to": "perf-analyst-4",
+      "label": "child"
+    },
+    {
+      "from": "bug-hunter-3",
+      "to": "perf-analyst-4"
+    },
+    {
+      "from": "auditor-0",
+      "to": "consistency-checker-5",
+      "label": "child"
+    },
+    {
+      "from": "perf-analyst-4",
+      "to": "consistency-checker-5"
+    },
+    {
+      "from": "parallel-1",
+      "to": "parallel-1"
+    },
+    {
+      "from": "parallel-1",
+      "to": "end-6"
+    },
+    {
+      "from": "parallel-1",
+      "to": "dead-code-2"
+    },
+    {
+      "from": "dead-code-2",
+      "to": "end-6"
+    },
+    {
+      "from": "parallel-1",
+      "to": "bug-hunter-3"
+    },
+    {
+      "from": "bug-hunter-3",
+      "to": "end-6"
+    },
+    {
+      "from": "parallel-1",
+      "to": "perf-analyst-4"
+    },
+    {
+      "from": "perf-analyst-4",
+      "to": "end-6"
+    },
+    {
+      "from": "parallel-1",
+      "to": "consistency-checker-5"
+    },
+    {
+      "from": "consistency-checker-5",
+      "to": "end-6"
+    },
+    {
+      "from": "consistency-checker-5",
+      "to": "end-6",
+      "label": "chain"
+    },
+    {
+      "from": "auditor-7",
+      "to": "auditor-8",
+      "label": "seed"
+    },
+    {
+      "from": "auditor-8",
+      "to": "auditor-0",
+      "label": "seed"
+    },
+    {
+      "from": "auditor-0",
+      "to": "join-9",
+      "label": "join"
+    },
+    {
+      "from": "join-9",
+      "to": "task-10",
+      "label": "chain"
+    }
+  ]
+}

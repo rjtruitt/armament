@@ -1,0 +1,24 @@
+/name test-all-features
+/description Tests orchestrator→spawn→parallel→join pattern with all injectors
+/trigger manual
+/budget 5.00
+
+/allow . /home/rob/Documents/AiLegoPieces/armament /home/rob/Documents/AiLegoPieces/armament-web-ui /tmp /dev /workspace
+
+/spawn coordinator "You are an orchestrator. Coordinate specialized workers to audit the workspace."
+
+/parallel
+  /spawn file-scanner "Use list_files and read_file to scan the project. Report all files by type."
+  /spawn code-checker "Use grep to find TODO comments, FIXME tags, and deprecated APIs. Report counts."
+  /spawn perf-analyst "Analyze scripts and configs for performance issues."
+  /spawn security-scan "Scan for hardcoded secrets, exposed keys, unsafe patterns."
+/end
+
+/seed coordinator user "You are an expert project auditor. Please audit this codebase thoroughly."
+/seed coordinator assistant "I'll spawn 4 workers running in parallel to audit different aspects."
+
+/join coordinator file-scanner code-checker perf-analyst security-scan
+
+/chain synthesizer "Take all worker findings. Synthesize them into a comprehensive audit report."
+
+/log "Full-feature test complete"

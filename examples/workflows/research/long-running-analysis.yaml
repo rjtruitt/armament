@@ -1,0 +1,73 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Long-running Analysis — uses pin_files to persist critical context through compaction
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: Deep analysis workflows consume many turns and fill the context window.
+#          When auto-compaction fires, the agent loses the raw file content it was
+#          referencing. pin_files ensures those files get re-injected automatically.
+#
+# The pinned files are re-read and injected as system reminders after compaction,
+# similar to how Claude Code preserves recently-referenced files.
+# ──────────────────────────────────────────────────────────────────────────────
+name: long-running-analysis
+description: Deep codebase analysis with pinned reference docs that survive compaction
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  target_dir:
+    type: string
+    required: true
+    description: "Directory to analyze"
+  spec_file:
+    type: string
+    required: true
+    description: "Path to the requirements/spec doc"
+  architecture_doc:
+    type: string
+    description: "Architecture reference (optional)"
+
+agents:
+  analyzer:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Perform a comprehensive analysis of $params.target_dir against the
+      requirements in $params.spec_file. For each requirement:
+      1. Find the implementing code
+      2. Verify correctness
+      3. Identify gaps or deviations
+      4. Note any tech debt
+
+      This will take many turns. The spec and architecture docs are pinned —
+      they'll be re-injected if the context window compacts.
+    tools: [read_file, list_directory, find_files, grep]
+    pin_files:
+      - $params.spec_file
+      - $params.architecture_doc
+    budget: 3.00
+    turns: 50
+    output: analysis_report
+
+  summarizer:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [analyzer]
+    prompt: |
+      Create a concise summary of the analysis findings:
+      $agents.analyzer.output
+
+      Format as a table: requirement | status | notes
+    pin_files:
+      - $params.spec_file
+    budget: 0.50
+    turns: 5
+    output: summary
+
+circuit_breaker:
+  max_total_budget: 5.00
+  max_total_turns: 80
+  stuck_detection:
+    consecutive_identical_calls: 4
+    action: compact_and_continue

@@ -1,0 +1,183 @@
+{
+  "name": "code-review-pipeline",
+  "description": "Full CI-style review pipeline with gates and parallel checks",
+  "trigger": {
+    "type": "manual"
+  },
+  "nodes": [
+    {
+      "id": "parallel-0",
+      "type": "parallel",
+      "config": {}
+    },
+    {
+      "id": "linter-1",
+      "type": "spawn",
+      "config": {
+        "agentName": "linter",
+        "task": "Run static analysis on all src/ files. Report: unused imports, type errors, style violations that could cause bugs. File:line."
+      }
+    },
+    {
+      "id": "test-audit-2",
+      "type": "spawn",
+      "config": {
+        "agentName": "test-audit",
+        "task": "Scan the test suite. Report: untested edge cases, missing test coverage for error paths, flaky test patterns. File:line."
+      }
+    },
+    {
+      "id": "security-scan-3",
+      "type": "spawn",
+      "config": {
+        "agentName": "security-scan",
+        "task": "Scan for security issues: hardcoded secrets, SQL injection vectors, unsafe deserialization, command injection. File:line."
+      }
+    },
+    {
+      "id": "end-4",
+      "type": "end",
+      "config": {}
+    },
+    {
+      "id": "join-5",
+      "type": "join",
+      "config": {
+        "agentNames": [
+          "linter",
+          "test-audit",
+          "security-scan"
+        ]
+      }
+    },
+    {
+      "id": "reviewer-6",
+      "type": "spawn",
+      "config": {
+        "agentName": "reviewer",
+        "task": "Review all findings from linter, test-audit, and security-scan. Prioritize by severity.",
+        "completionSchema": {
+          "fields": [
+            {
+              "name": "critical",
+              "type": "string[]",
+              "required": true,
+              "description": "Must-fix before merge"
+            },
+            {
+              "name": "warnings",
+              "type": "string[]",
+              "required": false,
+              "description": "Should fix this sprint"
+            },
+            {
+              "name": "info",
+              "type": "string[]",
+              "required": false,
+              "description": "Nice to have improvements"
+            }
+          ],
+          "purpose": "Findings feed the fix pipeline",
+          "sticky": true
+        }
+      }
+    },
+    {
+      "id": "approval-7",
+      "type": "approval",
+      "config": {
+        "prompt": "All findings reviewed. Merge to main?",
+        "gateType": "confirm"
+      }
+    },
+    {
+      "id": "task-8",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Code review pipeline complete"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "parallel-0",
+      "to": "linter-1"
+    },
+    {
+      "from": "linter-1",
+      "to": "test-audit-2"
+    },
+    {
+      "from": "test-audit-2",
+      "to": "security-scan-3"
+    },
+    {
+      "from": "parallel-0",
+      "to": "parallel-0"
+    },
+    {
+      "from": "parallel-0",
+      "to": "end-4"
+    },
+    {
+      "from": "parallel-0",
+      "to": "linter-1"
+    },
+    {
+      "from": "linter-1",
+      "to": "end-4"
+    },
+    {
+      "from": "parallel-0",
+      "to": "test-audit-2"
+    },
+    {
+      "from": "test-audit-2",
+      "to": "end-4"
+    },
+    {
+      "from": "parallel-0",
+      "to": "security-scan-3"
+    },
+    {
+      "from": "security-scan-3",
+      "to": "end-4"
+    },
+    {
+      "from": "security-scan-3",
+      "to": "end-4",
+      "label": "chain"
+    },
+    {
+      "from": "linter-1",
+      "to": "join-5",
+      "label": "join"
+    },
+    {
+      "from": "test-audit-2",
+      "to": "join-5",
+      "label": "join"
+    },
+    {
+      "from": "security-scan-3",
+      "to": "join-5",
+      "label": "join"
+    },
+    {
+      "from": "join-5",
+      "to": "reviewer-6",
+      "label": "chain"
+    },
+    {
+      "from": "reviewer-6",
+      "to": "approval-7",
+      "label": "chain"
+    },
+    {
+      "from": "approval-7",
+      "to": "task-8",
+      "label": "chain"
+    }
+  ]
+}

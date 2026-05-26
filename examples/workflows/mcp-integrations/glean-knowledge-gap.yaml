@@ -1,0 +1,95 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Knowledge Gap Analysis — use [KB] to find what's undocumented
+# Cross-reference [KB] search with wiki, find the holes
+# ──────────────────────────────────────────────────────────────────────────────
+name: knowledge-gap-analysis
+description: Find undocumented tribal knowledge by analyzing [KB] search patterns
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  team:
+    type: string
+    required: true
+  space_key:
+    type: string
+    required: true
+    description: "wiki space to audit"
+  time_window:
+    type: string
+    default: "past_month"
+
+agents:
+  question-miner:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Search [KB] for questions asked by $params.team members in the $params.time_window:
+      - Questions in Slack that went unanswered or had long threads
+      - Search queries that returned few/no results
+      - Repeated questions (asked by multiple people)
+
+      Categorize: onboarding, architecture, process, tooling, debugging, deployment.
+      Rank by frequency (how many times was this asked?).
+    tools: [mcp__kb__search, mcp__kb__chat]
+    output: questions
+    budget: 0.50
+    turns: 20
+
+  doc-auditor:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Audit the wiki space $params.space_key:
+      - List all existing pages with their last-updated dates
+      - Flag pages not updated in 90+ days (potentially stale)
+      - Identify topics covered vs. gaps
+
+      Cross-reference with the common questions to find:
+      - Questions with NO documentation
+      - Questions where docs exist but are outdated/wrong
+      - Questions where docs exist but are hard to find
+    tools: [mcp__wiki__getPagesInwikiSpace, mcp__wiki__getwikiPage, mcp__wiki__searchwikiUsingCql]
+    inject:
+      - workflow:knowledge-gap-analysis.question-miner
+    output: audit_results
+    budget: 0.50
+    turns: 20
+
+  gap-reporter:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [question-miner, doc-auditor]
+    prompt: |
+      Generate a knowledge gap report:
+
+      1. **Critical Gaps** — frequently asked, no docs exist
+      2. **Stale Docs** — docs exist but are outdated (>90 days, contradicts code)
+      3. **Hidden Docs** — docs exist but people can't find them (need better titles/linking)
+      4. **Recommended Doc Plan** — prioritized list of pages to create/update
+
+      For each recommended doc, estimate: effort (small/med/large), impact (high/med/low).
+    inject:
+      - workflow:knowledge-gap-analysis.question-miner
+      - workflow:knowledge-gap-analysis.doc-auditor
+    output: gap_report
+    budget: 0.30
+    turns: 5
+
+circuit_breaker:
+  max_total_budget: 2.00
+  max_total_turns: 50
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate
+
+outputs:
+  report:
+    from: gap-reporter
+    format: markdown
+    save_to: ".arma/outputs/knowledge-gaps-$params.team.md"
+
+meta:
+  tags: [mcp, [KB], wiki, knowledge-management]

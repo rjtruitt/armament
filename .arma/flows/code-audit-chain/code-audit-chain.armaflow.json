@@ -1,0 +1,116 @@
+{
+  "name": "code-audit-chain",
+  "description": "Sequential deep-dive: bug-hunter finds issues, then perf-analyst reviews same files for perf, then synthesizer ranks everything. Each agents output feeds into the next.",
+  "trigger": {
+    "type": "manual"
+  },
+  "nodes": [
+    {
+      "id": "bug-hunter-0",
+      "type": "spawn",
+      "config": {
+        "agentName": "bug-hunter",
+        "task": "Scan this project's src/ directories for logic bugs. Find: missing awaits on async calls, race conditions, off-by-one errors, unguarded null access, Map.get without nullish handling, event listener leaks, unclosed resources. Report each as: file:line, 3-5 line snippet, what breaks, the fix. Be thorough but only report confirmed issues."
+      }
+    },
+    {
+      "id": "bug-hunter-1",
+      "type": "spawn",
+      "config": {
+        "agentName": "bug-hunter"
+      }
+    },
+    {
+      "id": "perf-analyst-2",
+      "type": "spawn",
+      "config": {
+        "agentName": "perf-analyst"
+      }
+    },
+    {
+      "id": "synthesizer-3",
+      "type": "spawn",
+      "config": {
+        "agentName": "synthesizer"
+      }
+    },
+    {
+      "id": "synthesizer-4",
+      "type": "task",
+      "config": {
+        "action": "seed",
+        "target": "synthesizer",
+        "role": "user",
+        "content": "You will receive findings from a bug-hunter and perf-analyst. Deduplicate, rank by severity, output max 15 items as: severity, file:line, snippet, what breaks, fix as code."
+      }
+    },
+    {
+      "id": "collect-5",
+      "type": "join",
+      "config": {
+        "agentNames": [
+          "bug-hunter",
+          "perf-analyst"
+        ],
+        "collectTarget": "synthesizer"
+      }
+    },
+    {
+      "id": "wait-6",
+      "type": "wait",
+      "config": {
+        "agentName": "synthesizer"
+      }
+    },
+    {
+      "id": "task-7",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Chain audit complete — see #synthesizer"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "bug-hunter-0",
+      "to": "bug-hunter-1",
+      "label": "chain"
+    },
+    {
+      "from": "bug-hunter-1",
+      "to": "perf-analyst-2",
+      "label": "chain"
+    },
+    {
+      "from": "perf-analyst-2",
+      "to": "synthesizer-3",
+      "label": "chain"
+    },
+    {
+      "from": "synthesizer-4",
+      "to": "synthesizer-3",
+      "label": "seed"
+    },
+    {
+      "from": "bug-hunter-1",
+      "to": "collect-5",
+      "label": "collect"
+    },
+    {
+      "from": "perf-analyst-2",
+      "to": "collect-5",
+      "label": "collect"
+    },
+    {
+      "from": "synthesizer-3",
+      "to": "wait-6",
+      "label": "wait"
+    },
+    {
+      "from": "wait-6",
+      "to": "task-7",
+      "label": "chain"
+    }
+  ]
+}

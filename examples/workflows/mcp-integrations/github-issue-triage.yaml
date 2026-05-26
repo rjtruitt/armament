@@ -1,0 +1,87 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# GitHub Issue Triage — auto-label, prioritize, assign new issues
+# ──────────────────────────────────────────────────────────────────────────────
+name: github-issue-triage
+description: Automatically triage new GitHub issues with labeling and assignment
+version: "1.0.0"
+
+trigger:
+  type: cron
+  cron: "*/15 * * * *"  # every 15 minutes
+
+params:
+  repo:
+    type: string
+    required: true
+    description: "owner/repo format"
+  team_members:
+    type: array
+    default: ["alice", "bob", "charlie"]
+    description: "Team members available for assignment"
+
+agents:
+  issue-scanner:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Find all issues in $params.repo that:
+      - Were created in the last 15 minutes
+      - Have no labels
+      - Are not assigned
+
+      For each issue, get the full body and any linked PRs.
+    tools: [mcp__github__list_issues, mcp__github__issue_read]
+    output: new_issues
+    budget: 0.05
+    turns: 5
+    timeout: 30000
+
+  classifier:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [issue-scanner]
+    condition: "$issue-scanner.output.count > 0"
+    prompt: |
+      Classify each new issue:
+      - Type: bug | feature | question | docs | chore
+      - Priority: P1 (critical) | P2 (important) | P3 (nice-to-have) | P4 (backlog)
+      - Area: frontend | backend | infra | api | database | auth | other
+      - Complexity: small | medium | large
+      - Suggested assignee from $params.team_members based on area expertise
+
+      Output JSON array with issue number + classifications.
+    inject:
+      - workflow:github-issue-triage.issue-scanner
+    output: classifications
+    budget: 0.15
+    turns: 5
+
+  labeler:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [classifier]
+    prompt: |
+      Apply labels and assignments to classified issues.
+      For each issue, add:
+      - Type label (bug, feature, etc)
+      - Priority label (P1, P2, etc)
+      - Area label
+      - Assign to suggested team member
+
+      For P1 issues, also add "urgent" label.
+    tools: [mcp__github__issue_write]
+    inject:
+      - workflow:github-issue-triage.classifier
+    output: labeling_results
+    budget: 0.10
+    turns: 10
+
+circuit_breaker:
+  max_total_budget: 0.50
+  max_total_turns: 25
+  stuck_detection:
+    consecutive_identical_calls: 2
+    action: terminate
+
+meta:
+  tags: [mcp, github, triage, automated]

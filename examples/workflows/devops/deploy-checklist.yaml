@@ -1,0 +1,104 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Deploy Checklist — pre-deploy validation with approval gate
+# ──────────────────────────────────────────────────────────────────────────────
+name: deploy-checklist
+description: Run pre-deploy checks, validate readiness, gate deployment
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  service:
+    type: string
+    required: true
+    description: "Service name to deploy"
+  environment:
+    type: string
+    default: "staging"
+    description: "Target environment"
+  version_tag:
+    type: string
+    required: true
+
+agents:
+  test-validator:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Check CI status for $params.service at tag $params.version_tag:
+      - Are all tests passing?
+      - Any flaky test failures?
+      - Is coverage above threshold?
+      Report PASS/FAIL with details.
+    tools: [mcp__github__get_commit, mcp__github__list_commits]
+    output: test_status
+    budget: 0.10
+    turns: 5
+
+  migration-checker:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Check for pending database migrations in $params.service:
+      - Any new migration files since last deploy?
+      - Are they backwards-compatible?
+      - Do they require downtime?
+      - Is there a rollback migration?
+    tools: [mcp__github__get_file_contents, mcp__github__search_code]
+    output: migration_status
+    budget: 0.15
+    turns: 8
+
+  dependency-checker:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Check dependencies for $params.service:
+      - Any new dependencies added since last release?
+      - Any known CVEs in current deps?
+      - Lock file consistent?
+    tools: [mcp__github__get_file_contents]
+    output: dep_status
+    budget: 0.10
+    turns: 5
+
+  readiness-reporter:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [test-validator, migration-checker, dependency-checker]
+    prompt: |
+      Compile deploy readiness report for $params.service -> $params.environment:
+
+      Format as a clear checklist:
+      ✅ / ❌ Tests
+      ✅ / ❌ Migrations
+      ✅ / ❌ Dependencies
+
+      Overall verdict: READY or BLOCKED (with reasons)
+    inject:
+      - workflow:deploy-checklist.test-validator
+      - workflow:deploy-checklist.migration-checker
+      - workflow:deploy-checklist.dependency-checker
+    output: readiness_report
+    budget: 0.10
+    turns: 3
+
+waves:
+  - name: "checks"
+    agents: [test-validator, migration-checker, dependency-checker]
+    parallel: true
+  - name: "report"
+    agents: [readiness-reporter]
+    gate: confirm
+    gate_prompt: "Deploy readiness report generated. Proceed with deploy?"
+
+circuit_breaker:
+  max_total_budget: 0.75
+  max_total_turns: 30
+  stuck_detection:
+    consecutive_identical_calls: 2
+    action: terminate
+
+meta:
+  tags: [devops, deploy, validation]

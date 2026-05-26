@@ -1,0 +1,20 @@
+/** Providers: channel agents, provider pool, rate limiting, tools, and adapters. */
+export { ChannelAgent } from './ChannelAgent.js';
+export { ProviderPool, extractNick } from './ProviderPool.js';
+export { ProviderRegistry } from './ProviderRegistry.js';
+export type { ProviderConfig, ProviderStatus } from './ProviderRegistry.js';
+export { ProviderRateLimit } from './ProviderRateLimit.js';
+export { ProviderAgentMap } from './ProviderAgentMap.js';
+export { BaseToolAdapter, CatalogManager } from './CatalogAdapter.js';
+export type { RequestToolsITool } from './CatalogAdapter.js';
+export { getDefaultTools, createAskUserTool } from './BuiltinTools.js';
+export type { AskUserHandler, AskInputType } from './BuiltinTools.js';
+export { createA2ATools } from '../a2a/A2ATools.js';
+export { createPlanModeTools } from './PlanModeTools.js';
+export { createNudgeTools } from './NudgeTools.js';
+export type { NudgeStore } from './NudgeTools.js';
+export { createTaskTrackingTools, TaskStore } from './TaskTrackingTools.js';
+export { createTodoTool } from './TodoTool.js';
+export { ReadChannelTool } from './ReadChannelTool.js';
+export { createCrossChannelTools } from './CrossChannelTool.js';
+export { ModelToLLMAdapter } from './ModelToLLMAdapter.js';

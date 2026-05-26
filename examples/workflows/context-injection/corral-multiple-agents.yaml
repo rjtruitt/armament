@@ -1,0 +1,151 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: CORRAL MULTIPLE AGENTS WITH SHARED SYNTHETIC CONTEXT
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: You fan out 5 agents to work on related sections. Without shared
+#          context, they'll make contradictory assumptions. Agent A calls it
+#          "booking-api", Agent B calls it "reservation-service". Agent C
+#          invents features that don't exist.
+#
+# Solution: Give ALL agents the same synthetic "team meeting" context where
+#           decisions were "already made." They'll all follow the same
+#           terminology, architecture understanding, and constraints.
+#
+# This is like a pre-brief. Before soldiers go on a mission, they all get
+# the same briefing. We fabricate that briefing as prior conversation.
+# ──────────────────────────────────────────────────────────────────────────────
+name: corral-agents-pattern
+description: Multiple agents share synthetic context for consistency
+
+trigger:
+  type: manual
+
+params:
+  system_name:
+    type: string
+    required: true
+  components:
+    type: array
+    required: true
+
+# Shared context template — all agents get this injected
+shared_context: &shared_briefing
+  synthetic_history:
+    - role: user
+      content: |
+        Before we begin, here are the decisions the team already made
+        about $params.system_name. These are FINAL — do not deviate:
+
+    - role: assistant
+      content: "Understood. I'll review the established decisions."
+
+    - role: user
+      content: |
+        **Terminology (use these exact names):**
+        - The API gateway: "booking-api" (NOT reservation-service, NOT api-gateway)
+        - The pricing calculator: "pricing-engine" (NOT pricing-service, NOT cost-calculator)
+        - The availability checker: "availability-svc"
+        - The event bus: "Kafka" (NOT message queue, NOT event stream)
+        - The cache layer: "Redis availability cache" (NOT cache-svc)
+
+        **Architecture decisions (already made, don't question):**
+        - Event-driven via Kafka, NOT request-response between services
+        - PostgreSQL for transactional data, DynamoDB for audit trail
+        - JWT auth with RS256, scopes per service
+        - Cursor-based pagination everywhere, NO offset pagination
+        - All prices in cents (integer), NEVER floating point dollars
+
+        **Style decisions:**
+        - Code examples in TypeScript
+        - Diagrams in Mermaid syntax
+        - Tables for API reference, prose for architecture explanation
+        - Every claim must cite: (source: file.ts:line) or (source: wiki URL)
+
+    - role: assistant
+      content: |
+        Got it. I'll follow these decisions exactly:
+        - Use established terminology (booking-api, pricing-engine, etc.)
+        - Event-driven Kafka architecture, not request-response
+        - PostgreSQL + DynamoDB + Redis stack
+        - JWT RS256 auth, cursor pagination, integer cents
+        - TypeScript examples, Mermaid diagrams, cited claims
+        Ready for my assigned section.
+
+    - role: user
+      content: "Good. Now write your assigned section."
+
+agents:
+  overview-writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Write the system overview and TL;DR section."
+    budget: 0.30
+    turns: 5
+    <<: *shared_briefing
+
+  architecture-writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Write the architecture section with Mermaid diagrams showing service interactions."
+    budget: 0.50
+    turns: 8
+    <<: *shared_briefing
+
+  api-writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Write the API reference section with endpoint tables and examples."
+    tools: [read_file, grep]
+    budget: 0.50
+    turns: 10
+    <<: *shared_briefing
+
+  data-flow-writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Write the data flow section showing how events propagate through Kafka."
+    budget: 0.30
+    turns: 5
+    <<: *shared_briefing
+
+  gotchas-writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Write the gotchas and tribal knowledge section."
+    tools: [mcp__kb__search]
+    budget: 0.30
+    turns: 8
+    <<: *shared_briefing
+
+  # Assembler combines all sections — also gets the briefing so it knows
+  # the expected terminology and can catch any drift
+  assembler:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [overview-writer, architecture-writer, api-writer, data-flow-writer, gotchas-writer]
+    prompt: |
+      Assemble all sections into one coherent wiki page.
+      Check for terminology consistency. If any section drifted from the
+      established names, FIX IT.
+    inject:
+      - workflow:corral-agents-pattern.overview-writer
+      - workflow:corral-agents-pattern.architecture-writer
+      - workflow:corral-agents-pattern.api-writer
+      - workflow:corral-agents-pattern.data-flow-writer
+      - workflow:corral-agents-pattern.gotchas-writer
+    budget: 0.50
+    turns: 5
+    <<: *shared_briefing
+
+waves:
+  - name: "parallel-write"
+    agents: [overview-writer, architecture-writer, api-writer, data-flow-writer, gotchas-writer]
+    parallel: true
+  - name: "assemble"
+    agents: [assembler]
+
+circuit_breaker:
+  max_total_budget: 3.00
+  max_total_turns: 50
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate

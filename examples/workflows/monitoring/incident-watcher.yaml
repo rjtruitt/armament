@@ -1,0 +1,113 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Incident Watcher — monitors for Slack incident mentions, auto-creates Jira
+# tickets, summarizes impact, and notifies oncall
+# ──────────────────────────────────────────────────────────────────────────────
+name: incident-watcher
+description: Watch for incidents, auto-triage, create tickets, notify oncall
+version: "1.0.0"
+
+trigger:
+  type: cron
+  cron: "*/5 * * * *"  # every 5 minutes
+
+params:
+  watch_channels:
+    type: array
+    default: ["#incidents", "#alerts", "#production"]
+  oncall_channel:
+    type: string
+    default: "#oncall"
+  jira_project:
+    type: string
+    default: "INC"
+
+agents:
+  scanner:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Search for messages in the last 5 minutes from $params.watch_channels
+      that indicate incidents, outages, errors, or alerts.
+
+      Look for keywords: down, outage, 500, error rate, latency spike,
+      pager, alert firing, degraded, incident, broken, crash.
+
+      If nothing found, output: {"incidents": []}
+      If found, output JSON array with: channel, timestamp, reporter, severity_guess, summary
+    tools: [mcp__kb__search]
+    output: scan_results
+    budget: 0.05
+    turns: 5
+    timeout: 30000
+
+  triager:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [scanner]
+    condition: "$scanner.output.incidents.length > 0"
+    prompt: |
+      Triage these incidents. For each one:
+      1. Assess severity (P1-P4) based on user impact
+      2. Identify likely affected services
+      3. Suggest initial response actions
+      4. Determine if this is a duplicate of a recent incident
+
+      Search Jira for similar recent tickets to check for duplicates.
+    tools: [mcp__wiki__searchJiraIssuesUsingJql, mcp__kb__search]
+    inject:
+      - workflow:incident-watcher.scanner
+    output: triage_results
+    budget: 0.20
+    turns: 10
+    timeout: 60000
+
+  ticket-creator:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [triager]
+    condition: "$triager.output.new_incidents.length > 0"
+    prompt: |
+      Create Jira tickets for the triaged incidents that aren't duplicates.
+      Project: $params.jira_project
+      Include: title, description, severity, affected services, initial notes.
+    tools: [mcp__wiki__createJiraIssue]
+    inject:
+      - workflow:incident-watcher.triager
+    output: tickets_created
+    budget: 0.10
+    turns: 5
+    timeout: 30000
+
+  notifier:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [triager]
+    condition: "$triager.output.severity == 'P1' || $triager.output.severity == 'P2'"
+    prompt: |
+      High severity incident detected. Format a clear oncall notification:
+      - What's happening
+      - Severity and impact
+      - Suggested immediate actions
+      - Jira ticket link (if created)
+
+      Post to $params.oncall_channel
+    inject:
+      - workflow:incident-watcher.triager
+      - workflow:incident-watcher.ticket-creator
+    output: notification
+    budget: 0.05
+    turns: 3
+    timeout: 15000
+
+circuit_breaker:
+  max_total_budget: 0.50
+  max_total_turns: 30
+  stuck_detection:
+    consecutive_identical_calls: 2
+    action: terminate
+
+hooks:
+  on_complete: "/log 'Incident scan complete: $scan_results.incidents.length found'"
+
+meta:
+  tags: [monitoring, incidents, jira, critical]

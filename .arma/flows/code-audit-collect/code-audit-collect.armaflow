@@ -1,0 +1,27 @@
+/name code-audit-collect
+/description Spawns 4 independent analyst agents, waits for all to finish, then pipes their collected results into a synthesizer via /collect
+/trigger manual
+/budget 8.00
+
+# Phase 1: Fan out 4 specialists in parallel
+/parallel
+  /spawn dead-code "Scan all src/ directories. Find exports nothing imports, functions never called, config options read but never set, event listeners registered but never triggered, type definitions with zero usage. Trace imports with read_file and list_directory. Report ONLY confirmed dead symbols: file:line | symbol | reason. Skip tests and node_modules."
+
+  /spawn bug-hunter "Find logic bugs in this project: missing awaits, race conditions on shared mutable state, off-by-one errors, unguarded null access, Map.get without nullish handling, event listener leaks, unclosed resources. Report: file:line, 3-5 line snippet, what breaks, the fix."
+
+  /spawn perf-analyst "Find performance problems: O(n^2) loops, repeated computation in hot paths, string concat in loops, full rebuilds where partial updates work, sync I/O on hot paths, regex in loops. Report: file:line, code, estimated cost, the fix."
+
+  /spawn consistency-checker "Find interface mismatches: Map key format differences (with/without # prefix), type assertions masking errors, events emitted but never listened to, config name mismatches between set/read, function signatures disagreeing with callers. Report file:line for BOTH sides."
+/end
+
+# Phase 2: Wait for all to complete
+/join dead-code bug-hunter perf-analyst consistency-checker
+
+# Phase 3: Spawn synthesizer, then pipe collected results into it
+/spawn synthesizer "You will receive the combined output from 4 code audit agents. Deduplicate, remove speculation, keep only confirmed issues. Rank by severity: data-loss > logic bugs > perf > dead code > inconsistencies. Output numbered list, max 25 items. Each: severity, file:line, 5-line snippet, what breaks, fix as code."
+
+# Collect all 4 results and send to synthesizer
+/collect dead-code bug-hunter perf-analyst consistency-checker -> synthesizer
+
+/wait synthesizer complete
+/log "Collect-style audit complete — see #synthesizer for results"

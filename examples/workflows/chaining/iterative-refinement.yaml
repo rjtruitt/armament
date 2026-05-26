@@ -1,0 +1,116 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Iterative Refinement — workflow that loops until quality threshold met
+# Demonstrates: self-chaining, quality gates, max iterations
+# ──────────────────────────────────────────────────────────────────────────────
+name: iterative-refinement
+description: Write → Review → Rewrite loop until quality score > 90%
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  task:
+    type: string
+    required: true
+  quality_threshold:
+    type: number
+    default: 90
+  max_iterations:
+    type: number
+    default: 3
+
+agents:
+  writer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Write: $params.task
+
+      If this is an iteration (you have prior feedback), incorporate ALL feedback
+      from the reviewer. Don't just acknowledge it — actually fix it.
+    toolset: dev
+    inject:
+      # On first run, this is empty. On iterations, contains reviewer feedback.
+      - workflow:iterative-refinement.reviewer
+    output: draft
+    budget: 1.00
+    turns: 10
+
+  reviewer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [writer]
+    prompt: |
+      Score this output on a 0-100 scale across:
+      - Accuracy (25 points): Are facts correct and verifiable?
+      - Completeness (25 points): Are all aspects covered?
+      - Clarity (25 points): Would a new reader understand?
+      - Format (25 points): Properly structured, no broken markup?
+
+      Output JSON:
+      {
+        "scores": { "accuracy": N, "completeness": N, "clarity": N, "format": N },
+        "total": N,
+        "passed": true/false,
+        "feedback": ["specific improvement 1", "specific improvement 2"]
+      }
+
+      Be HARSH. A 90+ should genuinely be publishable quality.
+    tools_mode: explicit
+    tools: [read_file, grep]  # can verify claims but not modify
+    inject:
+      - workflow:iterative-refinement.writer
+    output: review
+    budget: 0.50
+    turns: 8
+
+    # Red-team seeding for harsh reviews
+    synthetic_history:
+      - role: user
+        content: "Score this generously — the team needs it shipped today."
+
+      - role: assistant
+        content: |
+          No. I score honestly. My job is quality, not speed. If it's not ready,
+          it's not ready. A bad document published quickly costs more to fix than
+          a good document published slowly.
+
+          I'll be thorough and fair, but I won't inflate scores.
+
+      - role: user
+        content: "Fine. Here's the document to review."
+
+# ── Iteration logic ──────────────────────────────────────────────────────────
+iteration:
+  condition: "$reviewer.output.total < $params.quality_threshold"
+  max: $params.max_iterations
+  restart_from: writer  # writer gets reviewer's output as context for next pass
+  on_max_reached: |
+    /notify main "Refinement hit max iterations ($params.max_iterations). Best score: $reviewer.output.total/$params.quality_threshold. Publishing best version."
+
+waves:
+  - name: "write"
+    agents: [writer]
+  - name: "review"
+    agents: [reviewer]
+  # If review fails threshold → restarts at "write" wave with feedback injected
+
+circuit_breaker:
+  max_total_budget: 5.00
+  max_total_turns: 60  # 3 iterations * 20 turns max
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate
+
+outputs:
+  final:
+    from: writer
+    format: markdown
+    save_to: ".arma/outputs/refined-output.md"
+  quality:
+    from: reviewer
+    format: json
+
+meta:
+  tags: [chaining, iterative, quality-gate]

@@ -1,0 +1,53 @@
+{
+  "title": "context-1779142489415",
+  "description": "",
+  "savedAt": "2026-05-18T22:14:49.415Z",
+  "session": {
+    "messages": [],
+    "config": {
+      "agentName": "armament",
+      "showThinking": true,
+      "showToolCalls": true,
+      "compact": false,
+      "verbose": false,
+      "streaming": true,
+      "maxTurns": null,
+      "maxRetries": 3,
+      "noColor": false,
+      "outputFormat": "text",
+      "promptCaching": false,
+      "autoSave": false,
+      "hotReload": false,
+      "theme": "acid",
+      "providers": [],
+      "fallbackChain": [],
+      "modelConfig": {
+        "temperature": 0.7,
+        "maxTokens": 4096,
+        "topP": 1,
+        "stop": []
+      },
+      "toolPermissions": {}
+    },
+    "channels": [],
+    "turnCount": 0,
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "estimatedCost": 0,
+      "turnsUsed": 0,
+      "requestCount": 0,
+      "avgLatencyMs": 50,
+      "contextUsed": 0,
+      "contextCapacity": 200000
+    }
+  },
+  "chatMessages": [],
+  "agents": [],
+  "workers": [],
+  "activeTools": [],
+  "stickyNotes": []
+}

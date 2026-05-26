@@ -1,0 +1,166 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: DETERMINISTIC TESTING / DRY RUN
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: You want to test a workflow without burning real API calls to
+#          MCP servers, LLM providers, or external services. You also want
+#          predictable outputs for CI/CD validation of workflow logic.
+#
+# Solution: Mock EVERYTHING. Inject synthetic tool results for every tool call
+#           the agent would make. The agent "runs" the workflow but all data is
+#           pre-fabricated. You're testing the workflow orchestration, not the LLM.
+#
+# Use cases:
+#   - CI pipeline: validate workflow YAML is well-formed and runnable
+#   - Cost estimation: see how many turns/tokens a workflow would use
+#   - Demo mode: show stakeholders what the workflow does without spending $$$
+#   - Regression testing: same inputs → same outputs → detect drift
+# ──────────────────────────────────────────────────────────────────────────────
+name: deterministic-testing-pattern
+description: Full workflow mock for testing without real API calls
+
+trigger:
+  type: manual
+
+params:
+  mode:
+    type: string
+    default: "dry_run"
+    description: "dry_run | demo | regression_test"
+
+agents:
+  researcher:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001  # cheapest model since it's mocked anyway
+    prompt: "Analyze the results of your research and summarize."
+    tools: [mcp__kb__search, read_file, grep]
+    budget: 0.05  # minimal budget — it shouldn't need real calls
+    turns: 3
+
+    synthetic_history:
+      - role: user
+        content: "Research the payment processing system architecture."
+
+      - role: assistant
+        content: "I'll search [KB] for payment system documentation."
+        tool_use:
+          - id: "mock_01"
+            name: mcp__kb__search
+            input: { query: "payment processing architecture" }
+
+      - role: tool_result
+        tool_use_id: "mock_01"
+        content: |
+          [MOCKED RESULT]
+          1. "Payment Processing Architecture" - wiki, updated 2025-12-01
+             - Stripe integration for card payments
+             - PayPal for alternative payments
+             - Internal ledger service for reconciliation
+          2. "Payment Service SLA" - wiki, updated 2025-11-15
+             - 99.99% uptime requirement
+             - <200ms p99 latency for charge operations
+
+      - role: assistant
+        content: "Let me also check the codebase for the payment service structure."
+        tool_use:
+          - id: "mock_02"
+            name: read_file
+            input: { path: "src/services/payment/index.ts" }
+
+      - role: tool_result
+        tool_use_id: "mock_02"
+        content: |
+          [MOCKED RESULT]
+          export class PaymentService {
+            private stripe: StripeClient;
+            private ledger: LedgerService;
+            private events: EventBus;
+
+            async charge(amount: number, currency: string, method: PaymentMethod): Promise<ChargeResult> {
+              const idempotencyKey = generateKey(amount, currency, method);
+              const result = await this.stripe.charges.create({ amount, currency }, { idempotencyKey });
+              await this.ledger.record(result);
+              this.events.emit('payment.charged', result);
+              return result;
+            }
+          }
+
+      - role: assistant
+        content: |
+          Based on my research, here's the payment system architecture:
+
+          **Components:**
+          - PaymentService (src/services/payment/) — orchestrates charge flow
+          - Stripe integration — primary payment processor
+          - LedgerService — internal reconciliation
+          - EventBus — async event propagation (payment.charged, payment.refunded)
+
+          **Key characteristics:**
+          - Idempotent charge operations (prevents double-charge)
+          - Event-driven audit trail
+          - 99.99% SLA, <200ms p99
+
+          Research complete.
+
+      - role: user
+        content: "Summarize your findings in a structured format."
+
+    # In dry_run mode, the agent just outputs its "summary" based on mocked data.
+    # Total cost: maybe $0.01 for the final summarization turn.
+    # Total time: <5 seconds vs. 60+ seconds for real tool calls.
+    # Perfect for: testing that the workflow YAML parses, agents start in right order,
+    # outputs are captured correctly, circuit breakers trigger appropriately.
+
+  writer:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [researcher]
+    prompt: "Format the research into documentation."
+    budget: 0.05
+    turns: 3
+
+    synthetic_history:
+      - role: user
+        content: "Here are the research findings. Format them as documentation."
+
+      - role: assistant
+        content: |
+          I'll format the findings into a structured document:
+
+          # Payment Processing System
+
+          ## Overview
+          The payment system uses Stripe as the primary processor with an internal
+          ledger for reconciliation and event-driven audit trail.
+
+          ## Architecture
+          ```mermaid
+          graph LR
+            A[Client] --> B[PaymentService]
+            B --> C[Stripe]
+            B --> D[LedgerService]
+            B --> E[EventBus]
+            E --> F[AuditLog]
+          ```
+
+          Documentation formatted.
+
+      - role: user
+        content: "Finalize the output."
+
+    # Writer also mocked — workflow tests the full pipeline without spending anything.
+
+circuit_breaker:
+  max_total_budget: 0.25  # should barely be touched with mocks
+  max_total_turns: 10
+  stuck_detection:
+    consecutive_identical_calls: 1  # extra strict in test mode
+    action: terminate
+
+outputs:
+  result:
+    from: writer
+    format: markdown
+    save_to: ".arma/test-outputs/dry-run-$date.md"
+
+meta:
+  tags: [testing, dry-run, mocked, ci-cd]

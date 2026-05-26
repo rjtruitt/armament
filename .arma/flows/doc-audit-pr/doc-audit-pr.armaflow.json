@@ -1,0 +1,173 @@
+{
+  "name": "doc-audit-pr",
+  "description": "Real doc audit: rescan armament + armament-web-ui docs against source, fix discrepancies, open PR via gh",
+  "trigger": {
+    "type": "manual"
+  },
+  "nodes": [
+    {
+      "id": "rescan-0",
+      "type": "spawn",
+      "config": {
+        "agentName": "rescan",
+        "task": "You are the armament documentation auditor. Your job: cross-reference EVERY .md doc file against actual source code and fix discrepancies. Source code is the ONLY truth. This project has 24+ doc files across docs/, .github/, README.md, CHANGELOG.md, SECURITY.md. Also check ../armament-web-ui/ for its docs."
+      }
+    },
+    {
+      "id": "wait-1",
+      "type": "wait",
+      "config": {
+        "agentName": "rescan"
+      }
+    },
+    {
+      "id": "task-2",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Rescan complete — all docs audited and fixed"
+      }
+    },
+    {
+      "id": "publisher-3",
+      "type": "spawn",
+      "config": {
+        "agentName": "publisher",
+        "task": "You are the publishing agent. Create a git branch, commit all doc fixes, and open a PR."
+      }
+    },
+    {
+      "id": "wait-4",
+      "type": "wait",
+      "config": {
+        "agentName": "publisher"
+      }
+    },
+    {
+      "id": "task-5",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "PR created — ready for review"
+      }
+    },
+    {
+      "id": "task-6",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "═══════════════════════════════════════"
+      }
+    },
+    {
+      "id": "task-7",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Doc audit complete:"
+      }
+    },
+    {
+      "id": "task-8",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "  - All docs audited against source"
+      }
+    },
+    {
+      "id": "task-9",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "  - Discrepancies fixed"
+      }
+    },
+    {
+      "id": "task-10",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "  - web-ui architecture page created"
+      }
+    },
+    {
+      "id": "task-11",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "  - Branch pushed, PR open for review"
+      }
+    },
+    {
+      "id": "task-12",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "═══════════════════════════════════════"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "rescan-0",
+      "to": "wait-1",
+      "label": "wait"
+    },
+    {
+      "from": "wait-1",
+      "to": "task-2",
+      "label": "chain"
+    },
+    {
+      "from": "task-2",
+      "to": "publisher-3",
+      "label": "chain"
+    },
+    {
+      "from": "publisher-3",
+      "to": "wait-4",
+      "label": "wait"
+    },
+    {
+      "from": "wait-4",
+      "to": "task-5",
+      "label": "chain"
+    },
+    {
+      "from": "task-5",
+      "to": "task-6",
+      "label": "chain"
+    },
+    {
+      "from": "task-6",
+      "to": "task-7",
+      "label": "chain"
+    },
+    {
+      "from": "task-7",
+      "to": "task-8",
+      "label": "chain"
+    },
+    {
+      "from": "task-8",
+      "to": "task-9",
+      "label": "chain"
+    },
+    {
+      "from": "task-9",
+      "to": "task-10",
+      "label": "chain"
+    },
+    {
+      "from": "task-10",
+      "to": "task-11",
+      "label": "chain"
+    },
+    {
+      "from": "task-11",
+      "to": "task-12",
+      "label": "chain"
+    }
+  ]
+}

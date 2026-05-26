@@ -1,0 +1,144 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: FALLBACK CHAIN
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: External services go down. When [KB] is unreachable or GitHub
+#          returns 503, your workflow fails. Agents aren't great at retrying
+#          with alternative approaches.
+#
+# Solution: Wrap tools with fallback logic. If the primary fails, try
+#           alternatives automatically. The agent never sees the failure.
+#
+# Fallback strategies:
+#   1. Try alternative tool ([KB] down → wiki search)
+#   2. Try cached result (even if slightly stale)
+#   3. Try different API endpoint (v2 → v1)
+#   4. Degrade gracefully (return partial result with warning)
+# ──────────────────────────────────────────────────────────────────────────────
+name: fallback-chain-demo
+description: Automatic failover between equivalent data sources
+
+trigger:
+  type: manual
+
+params:
+  query:
+    type: string
+    default: "OppyHub sync logic"
+
+wrappers:
+  # [KB] → wiki fallback
+  - name: search-fallback
+    description: "If [KB] fails, fall back to wiki CQL search"
+    tools:
+      - mcp__kb__search
+    priority: 10
+    handler: |
+      try {
+        const result = await callReal();
+        return { type: 'replace', output: result };
+      } catch (error) {
+        console.warn(`[KB] search failed: ${error.message}. Falling back to wiki.`);
+        try {
+          const cql = `text ~ "${ctx.inputs.query}" AND space = "SFD"`;
+          const fallback = await callTool('mcp__wiki__searchwikiUsingCql', { cql, limit: 10 });
+          return {
+            type: 'replace',
+            output: {
+              ...fallback,
+              _fallback: true,
+              _originalError: error.message,
+              _source: 'wiki-fallback'
+            }
+          };
+        } catch (fallbackError) {
+          // Both failed — return empty with warning
+          return {
+            type: 'replace',
+            output: {
+              results: [],
+              _error: 'All search providers failed',
+              _attempts: ['[KB]', 'wiki'],
+              _warnings: ['Results may be incomplete — manual search recommended']
+            }
+          };
+        }
+      }
+
+  # GitHub API → local clone fallback
+  - name: github-fallback
+    description: "If GitHub API fails, try local clone"
+    tools:
+      - mcp__github__get_file_contents
+    priority: 10
+    config:
+      local_repos:
+        myorg/myrepo: ~/projects/myrepo
+    handler: |
+      try {
+        return await callReal();
+      } catch (error) {
+        // GitHub is down or rate-limited — try local
+        const repo = `${ctx.inputs.owner}/${ctx.inputs.repo}`;
+        const localPath = config.local_repos[repo];
+        if (localPath) {
+          try {
+            const content = await readFile(`${localPath}/${ctx.inputs.path}`, 'utf-8');
+            return {
+              type: 'replace',
+              output: {
+                content,
+                path: ctx.inputs.path,
+                _source: 'local-fallback',
+                _warning: 'From local clone — may not reflect latest remote changes'
+              }
+            };
+          } catch {
+            // Local file doesn't exist either
+          }
+        }
+        // Re-throw original error if no fallback available
+        return { type: 'error', message: `GitHub unavailable and no local fallback: ${error.message}` };
+      }
+
+  # Jira API with retry + exponential backoff
+  - name: jira-retry
+    description: "Retry Jira calls with exponential backoff"
+    tools:
+      - "mcp__wiki__*Jira*"
+      - "mcp__wiki__*jira*"
+    priority: 10
+    config:
+      maxRetries: 3
+      baseDelay: 1000
+    handler: |
+      let lastError;
+      for (let attempt = 0; attempt < config.maxRetries; attempt++) {
+        try {
+          const result = await callReal();
+          return { type: 'replace', output: result };
+        } catch (error) {
+          lastError = error;
+          if (attempt < config.maxRetries - 1) {
+            const delay = config.baseDelay * Math.pow(2, attempt);
+            await sleep(delay);
+          }
+        }
+      }
+      return { type: 'error', message: `Jira failed after ${config.maxRetries} attempts: ${lastError.message}` };
+
+agents:
+  researcher:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Search for information about: $params.query
+      Use all available sources.
+    tools:
+      - mcp__kb__search
+      - mcp__github__get_file_contents
+      - mcp__wiki__getJiraIssue
+    budget: 1.50
+    turns: 20
+
+# Agent calls tools normally. If anything fails, wrappers handle retry/fallback.
+# Agent code is clean and simple. Resilience lives in the wrapper layer.

@@ -1,0 +1,326 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Sweep Until Clean — iterating contradiction hunt + fix until pages are clean
+# This is the automated version of what you did manually in Claude Code:
+#   spawn hunters → read results → spawn fixers → re-hunt → repeat
+# ──────────────────────────────────────────────────────────────────────────────
+name: doc-sweep-until-clean
+description: Repeatedly hunt contradictions and fix them until no more are found
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  source_repo:
+    type: string
+    required: true
+    description: "Path to codebase (ground truth)"
+  wiki_space:
+    type: string
+    required: true
+    description: "Space key containing pages to sweep"
+  sections:
+    type: array
+    default: ["all"]
+    description: "Sections to sweep, or 'all' for everything"
+  contradiction_threshold:
+    type: number
+    default: 0
+    description: "Stop when total contradictions <= this number"
+  max_sweeps:
+    type: number
+    default: 5
+    description: "Maximum hunt→fix cycles before giving up"
+
+# ── Toolset: all hunters and fixers get code access + wiki ──────────
+agent_defaults:
+  toolset: [dev, wiki]
+  inject:
+    - workflows/doc-gen/partials/research-instructions.md
+
+agents:
+  # ══════════════════════════════════════════════════════════════════════════
+  # WAVE 1: CONTRADICTION HUNTERS (parallel, one per section)
+  # These are adversarially-seeded — they WANT to find problems.
+  # ══════════════════════════════════════════════════════════════════════════
+  hunter-case-mgmt:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Hunt for contradictions in Case Management pages in space $params.wiki_space.
+      For EVERY factual claim about code:
+      - Read the actual file
+      - Compare claim to reality
+      - Flag: class names, method signatures, field names, constants, logic descriptions
+
+      Output JSON: { "page_id": "", "contradictions": [{ "claim": "", "actual": "", "severity": "critical|high|medium" }] }
+    tools: [read_file, grep, find_files, mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage]
+    output: case_mgmt_findings
+    budget: 1.00
+    turns: 30
+    synthetic_history: &hunter_persona
+      - role: user
+        content: "Review these documentation pages for accuracy."
+      - role: assistant
+        content: "I'll check each claim against the codebase."
+      - role: user
+        content: |
+          Last time you reviewed docs, you marked 4 pages as "looks good" and they
+          turned out to have fabricated class names. Every single one was wrong.
+          This time: read the ACTUAL file for EVERY claim. If the class name in
+          the doc doesn't match `grep -r "class ClassName"`, it's fabricated.
+          I don't care about style or formatting — I care about LIES.
+      - role: assistant
+        content: |
+          Understood. I'll verify every class name, method signature, and field
+          reference against the actual source code. No claim passes without me
+          reading the real file. If grep returns nothing, it's fabricated.
+
+  hunter-communication:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Hunt for contradictions in Communication/Telephony pages (Twilio, Amazon Connect,
+      Email Services, CTI, MessagingSession) in space $params.wiki_space.
+      Verify every class name, auth method, field name, and architectural claim.
+      Output JSON array of contradictions per page.
+    tools: [read_file, grep, find_files, mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage]
+    output: comms_findings
+    budget: 1.00
+    turns: 30
+    synthetic_history: *hunter_persona
+
+  hunter-integrations:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Hunt for contradictions in Integration pages (HASP, Zuora, Contact360, Hyperwallet,
+      ElasticSearch, GPNV) in space $params.wiki_space.
+      Verify: Named Credentials, batch sizes, auth methods, class names, HTTP methods.
+      Output JSON array of contradictions per page.
+    tools: [read_file, grep, find_files, mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage]
+    output: integration_findings
+    budget: 1.00
+    turns: 30
+    synthetic_history: *hunter_persona
+
+  hunter-distribution:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Hunt for contradictions in Distribution Engine pages (OpportunityCreation, signals,
+      holding users, batch chains, 900-record caps) in space $params.wiki_space.
+      Verify batch sizes, query structures, chain order, field names.
+      Output JSON array of contradictions per page.
+    tools: [read_file, grep, find_files, mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage]
+    output: distribution_findings
+    budget: 1.00
+    turns: 30
+    synthetic_history: *hunter_persona
+
+  hunter-ai-automation:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Hunt for contradictions in Einstein/AI/Automation pages (GenAI, Agentforce, bots,
+      scheduled flows, NBA) in space $params.wiki_space.
+      Verify: API integration patterns, class inheritance, Named Credentials, platform events.
+      Output JSON array of contradictions per page.
+    tools: [read_file, grep, find_files, mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage]
+    output: ai_findings
+    budget: 1.00
+    turns: 30
+    synthetic_history: *hunter_persona
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # WAVE 2: TRIAGE — compile all findings, prioritize fixes
+  # ══════════════════════════════════════════════════════════════════════════
+  triager:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [hunter-case-mgmt, hunter-communication, hunter-integrations, hunter-distribution, hunter-ai-automation]
+    prompt: |
+      Compile all contradiction findings and triage:
+
+      1. Count total contradictions
+      2. Group by severity (critical: fabricated classes/wrong architecture,
+         high: wrong values/signatures, medium: minor field name errors)
+      3. Group by fix type:
+         - FULL REWRITE needed (>5 contradictions or fabricated architecture)
+         - TARGETED FIX (1-5 specific corrections)
+         - SKIP (cosmetic, low-impact)
+      4. For each page needing fixes, output:
+         { "page_id": "", "page_title": "", "fix_type": "rewrite|targeted|skip",
+           "contradictions": [...], "priority": 1-N }
+
+      Output final JSON:
+      {
+        "total_contradictions": N,
+        "pages_needing_rewrite": [...],
+        "pages_needing_targeted_fix": [...],
+        "pages_clean": [...],
+        "sweep_complete": true/false  // true if total_contradictions == 0
+      }
+    inject:
+      - workflow:doc-sweep-until-clean.hunter-case-mgmt
+      - workflow:doc-sweep-until-clean.hunter-communication
+      - workflow:doc-sweep-until-clean.hunter-integrations
+      - workflow:doc-sweep-until-clean.hunter-distribution
+      - workflow:doc-sweep-until-clean.hunter-ai-automation
+    output: triage
+    budget: 0.50
+    turns: 5
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # WAVE 3: FIXERS (dynamically spawned from triage results)
+  # Each fixer gets the specific contradictions for its assigned page.
+  # ══════════════════════════════════════════════════════════════════════════
+
+  # Dynamic spawn: one fixer per page that needs work
+  # The workflow engine reads triage.pages_needing_rewrite and
+  # triage.pages_needing_targeted_fix, spawns a fixer for each.
+  fixer-template:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    spawn_per: "$triage.output.pages_needing_rewrite + $triage.output.pages_needing_targeted_fix"
+    spawn_var: page  # each instance gets $page with its specific data
+    depends_on: [triager]
+    prompt: |
+      Fix wiki page "$page.page_title" (ID: $page.page_id).
+
+      Contradictions to fix:
+      $page.contradictions
+
+      Fix type: $page.fix_type
+
+      Rules:
+      - If REWRITE: read the REAL source code, rebuild the page from scratch
+      - If TARGETED: surgically fix only the specific contradictions listed
+      - VERIFY every fix by reading the actual file
+      - Use wiki HTML formatting
+      - Cite file:line for every claim in the corrected page
+      - Do NOT invent. If you can't find it in code, write "[NEEDS VERIFICATION]"
+    tools: [read_file, grep, find_files, mcp__wiki__getwikiPage, mcp__wiki__updatewikiPage]
+    inject:
+      - docs/AGENT-CONFLUENCE-GUIDE.md
+    budget: 1.50
+    turns: 25
+    synthetic_history:
+      - role: user
+        content: "Fix this wiki page."
+      - role: assistant
+        content: "I'll fix it. What are the issues?"
+      - role: user
+        content: |
+          Previous fix agents introduced NEW fabrications while fixing old ones.
+          That's unacceptable. For every line you write:
+          1. You MUST have read the actual source file first
+          2. You MUST cite the file path and line number
+          3. If you're not 100% sure, write [NEEDS VERIFICATION]
+          4. NEVER fill gaps with "reasonable guesses" — gaps stay as gaps
+
+          I'd rather have a page with [NEEDS VERIFICATION] markers than a page
+          with confident lies.
+      - role: assistant
+        content: |
+          Absolutely. Every claim I write will be backed by a file I actually read.
+          No guessing, no filling gaps. If I can't verify it, I mark it.
+          Show me the contradictions.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # WAVE 4: VERIFICATION — spot-check the fixes
+  # ══════════════════════════════════════════════════════════════════════════
+  verifier:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [fixer-template]
+    prompt: |
+      Spot-check 3-5 of the fixed pages. For each:
+      1. Pick 3 random claims from the page
+      2. Verify each against the actual source code
+      3. Report: page_id, claims_checked, claims_verified, claims_wrong
+
+      If ANY claims are still wrong, the sweep is NOT clean.
+
+      Output:
+      {
+        "pages_checked": N,
+        "claims_checked": N,
+        "claims_verified": N,
+        "claims_wrong": N,
+        "still_dirty": true/false,
+        "details": [...]
+      }
+    tools: [read_file, grep, mcp__wiki__getwikiPage]
+    output: verification
+    budget: 0.75
+    turns: 15
+    synthetic_history: *hunter_persona
+
+# ── Iteration: run the whole thing again if still dirty ──────────────────────
+iteration:
+  # Keep sweeping until either:
+  # - Triage finds 0 contradictions (clean!)
+  # - Verifier confirms fixes are good
+  # - We hit max_sweeps
+  condition: "$triage.output.total_contradictions > $params.contradiction_threshold && $verification.output.still_dirty == true"
+  max: $params.max_sweeps
+  restart_from: hunters  # full re-hunt to catch newly introduced errors
+  on_max_reached: |
+    /notify main "Sweep hit max iterations ($params.max_sweeps). Remaining contradictions: $triage.output.total_contradictions. Manual review needed."
+  on_clean: |
+    /notify main "All pages clean after $iteration.count sweeps! $triage.output.total_contradictions contradictions remaining."
+
+waves:
+  - name: "hunters"
+    agents: [hunter-case-mgmt, hunter-communication, hunter-integrations, hunter-distribution, hunter-ai-automation]
+    parallel: true
+  - name: "triage"
+    agents: [triager]
+  - name: "fixers"
+    agents: [fixer-template]  # dynamically spawns N instances
+    parallel: true
+  - name: "verification"
+    agents: [verifier]
+  # → if iteration.condition is true, loops back to "hunters"
+
+circuit_breaker:
+  max_total_budget: 50.00          # serious budget for a full sweep
+  max_total_turns: 500             # lots of agents, lots of turns
+  max_total_duration: 3600000      # 1 hour max
+  stuck_detection:
+    consecutive_identical_calls: 3
+    idle_timeout: 60000
+    action: terminate
+  # Per-iteration budget tracking:
+  per_iteration_budget: 15.00      # kill if single sweep costs more than this
+  budget_trend: increasing         # if each sweep costs MORE than the last, warn
+
+outputs:
+  final_report:
+    from: verifier
+    format: json
+    save_to: ".arma/outputs/sweep-report-$date.json"
+  contradiction_log:
+    from: triager
+    format: json
+    save_to: ".arma/outputs/contradictions-$date.json"
+
+hooks:
+  on_start: "/log 'Starting doc sweep for space $params.wiki_space'"
+  on_iteration_start: "/log 'Sweep iteration $iteration.count starting...'"
+  on_iteration_complete: "/log 'Sweep $iteration.count done. Contradictions: $triage.output.total_contradictions'"
+  on_complete: "/notify main 'Doc sweep complete. $iteration.count iterations. Final score: $verification.output.claims_verified/$verification.output.claims_checked verified.'"
+  on_failure: "/notify main 'Doc sweep failed at $failed_agent: $error'"
+
+meta:
+  layout:
+    hunter-case-mgmt: { x: 50, y: 50 }
+    hunter-communication: { x: 200, y: 50 }
+    hunter-integrations: { x: 350, y: 50 }
+    hunter-distribution: { x: 500, y: 50 }
+    hunter-ai-automation: { x: 650, y: 50 }
+    triager: { x: 350, y: 200 }
+    fixer-template: { x: 350, y: 350 }
+    verifier: { x: 350, y: 500 }
+  tags: [documentation, hallucination-detection, iterative, production]

@@ -1,0 +1,132 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# DEFAULT TOOLSETS
+# ══════════════════════════════════════════════════════════════════════════════
+# Every agent in a workflow gets a base set of tools by default.
+# You don't need to list these — they're always available.
+# The `tools` field in agent definitions ADDS to the defaults, not replaces.
+#
+# To explicitly restrict an agent's tools (e.g., a read-only reviewer),
+# use `tools_mode: explicit` which disables defaults and ONLY gives listed tools.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Default Toolset (always available unless tools_mode: explicit) ──────────
+defaults:
+  tools:
+    # Core terminal/filesystem
+    - read_file         # read any file
+    - list_directory    # ls equivalent
+    - find_files        # find by pattern
+    - grep              # search file contents
+    - bash              # run shell commands (sandboxed)
+
+    # Internal workflow tools
+    - terminate_worker  # mark self as complete
+    - emit_event        # emit event to workflow bus
+    - log               # write to workflow log
+
+  # Tool categories auto-loaded for all agents
+  tool_categories:
+    - filesystem        # read_file, list_directory, find_files, grep
+    - terminal          # bash (sandboxed), environment info
+
+# ── Toolset Presets (reference by name in agent definitions) ────────────────
+toolsets:
+  # Full dev tools — for agents that need to modify code
+  dev:
+    inherits: defaults
+    tools:
+      - edit_file
+      - write_file
+      - git_status
+      - git_diff
+      - git_commit
+
+  # Read-only research — can search but not modify
+  research:
+    inherits: defaults
+    tools:
+      - mcp__kb__search
+      - mcp__kb__read_document
+      - mcp__kb__chat
+      - mcp__wiki__searchwikiUsingCql
+      - mcp__wiki__getwikiPage
+
+  # MCP full access — all connected MCP servers
+  mcp_full:
+    inherits: defaults
+    tool_categories:
+      - mcp              # all MCP server tools
+
+  # GitHub operations
+  github:
+    inherits: defaults
+    tools:
+      - mcp__github__list_issues
+      - mcp__github__issue_read
+      - mcp__github__issue_write
+      - mcp__github__pull_request_read
+      - mcp__github__list_pull_requests
+      - mcp__github__get_file_contents
+      - mcp__github__list_commits
+      - mcp__github__search_code
+
+  # wiki publishing
+  wiki:
+    inherits: defaults
+    tools:
+      - mcp__wiki__searchwikiUsingCql
+      - mcp__wiki__getwikiPage
+      - mcp__wiki__createwikiPage
+      - mcp__wiki__updatewikiPage
+      - mcp__wiki__getwikiSpaces
+      - mcp__wiki__getPagesInwikiSpace
+
+  # Jira operations
+  jira:
+    inherits: defaults
+    tools:
+      - mcp__wiki__searchJiraIssuesUsingJql
+      - mcp__wiki__getJiraIssue
+      - mcp__wiki__createJiraIssue
+      - mcp__wiki__editJiraIssue
+      - mcp__wiki__transitionJiraIssue
+      - mcp__wiki__addCommentToJiraIssue
+
+  # Minimal — for agents that just process text (reviewers, formatters)
+  minimal:
+    tools:
+      - terminate_worker
+      - log
+    # No filesystem, no terminal, no MCP — pure text-in/text-out
+
+# ── Usage in agent definitions ──────────────────────────────────────────────
+# Option 1: Use defaults (most common, don't specify tools at all)
+#   agents:
+#     worker:
+#       prompt: "..."
+#       # Gets filesystem + terminal automatically
+#
+# Option 2: Add to defaults
+#   agents:
+#     worker:
+#       prompt: "..."
+#       tools: [mcp__github__list_issues]  # gets defaults + github issues
+#
+# Option 3: Use a preset
+#   agents:
+#     worker:
+#       prompt: "..."
+#       toolset: research  # gets defaults + all research tools
+#
+# Option 4: Explicit only (no defaults)
+#   agents:
+#     worker:
+#       prompt: "..."
+#       tools_mode: explicit
+#       tools: [read_file]  # ONLY read_file, nothing else
+#
+# Option 5: Multiple presets
+#   agents:
+#     worker:
+#       prompt: "..."
+#       toolset: [research, github]  # combines both presets

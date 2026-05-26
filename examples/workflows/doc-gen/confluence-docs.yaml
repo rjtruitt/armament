@@ -1,0 +1,191 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# The "big scenario" — multi-wave wiki documentation generation
+# Based on the real workflow transcript: spawn researchers per source,
+# synthesize into wiki pages, then review for accuracy.
+# ──────────────────────────────────────────────────────────────────────────────
+name: wiki-doc-gen
+description: Generate wiki documentation from code, PRDs, and [KB] sources
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  space_key:
+    type: string
+    required: true
+    description: "wiki space key (e.g., ENG)"
+  page_title:
+    type: string
+    required: true
+    description: "Title for the generated page"
+  topic:
+    type: string
+    required: true
+    description: "What to document (e.g., 'Booking API authentication flow')"
+  source_repo:
+    type: string
+    default: "."
+    description: "Path to source repository"
+
+agents:
+  code-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Research the codebase at $params.source_repo for everything related to: $params.topic
+      Find all relevant files, functions, classes, interfaces, and data flows.
+      Produce a structured summary with file paths and code references.
+    tools: [read_file, grep, find_files, list_directory]
+    inject:
+      - docs/TODO_ITERATION_LOOP.md
+    output: code_findings
+    budget: 1.00
+    turns: 30
+    timeout: 180000
+
+  prd-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Search wiki and [KB] for PRDs, design docs, and specs related to: $params.topic
+      Focus on requirements, acceptance criteria, and architectural decisions.
+      Cite sources with links.
+    tools: [mcp__kb__search, mcp__kb__read_document, mcp__wiki__searchwikiUsingCql, mcp__wiki__getwikiPage]
+    inject:
+      - docs/TODO_ITERATION_LOOP.md
+    output: prd_findings
+    budget: 0.50
+    turns: 20
+    timeout: 120000
+
+  slack-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Search [KB] for Slack conversations, threads, and discussions about: $params.topic
+      Look for decisions made in chat, gotchas mentioned by engineers, and context
+      that wouldn't be in formal docs. Summarize with attribution.
+    tools: [mcp__kb__search, mcp__kb__chat]
+    inject:
+      - docs/TODO_ITERATION_LOOP.md
+    output: slack_findings
+    budget: 0.50
+    turns: 15
+    timeout: 120000
+
+  synthesizer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [code-researcher, prd-researcher, slack-researcher]
+    prompt: |
+      You are a technical writer. Synthesize the research from three sources into
+      a comprehensive wiki page about: $params.topic
+
+      Source hierarchy (trust in this order):
+      1. Code findings (ground truth)
+      2. PRD findings (intended behavior)
+      3. Slack findings (tribal knowledge, context)
+
+      Structure the page with:
+      - Overview / TL;DR
+      - Architecture diagram (describe in text, use mermaid if possible)
+      - Key components and their responsibilities
+      - Data flow
+      - Configuration
+      - Gotchas and tribal knowledge
+      - Related resources (links)
+
+      Format as wiki HTML (use panels, tables, code blocks).
+    inject:
+      - docs/AGENT-CONFLUENCE-GUIDE.md
+      - workflow:wiki-doc-gen.code-researcher
+      - workflow:wiki-doc-gen.prd-researcher
+      - workflow:wiki-doc-gen.slack-researcher
+    output: draft_page
+    budget: 1.50
+    turns: 10
+    timeout: 120000
+
+  reviewer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [synthesizer]
+    prompt: |
+      Review this wiki page draft for:
+      1. Technical accuracy (cross-reference with the code findings)
+      2. Completeness (does it cover all aspects from the research?)
+      3. Formatting (proper wiki HTML, no broken markup)
+      4. Readability (clear for a new engineer joining the team)
+
+      If issues found, rewrite the affected sections. Output the final page HTML.
+    inject:
+      - workflow:wiki-doc-gen.synthesizer
+      - workflow:wiki-doc-gen.code-researcher
+      - docs/AGENT-CONFLUENCE-GUIDE.md
+    output: final_page
+    budget: 1.00
+    turns: 10
+    timeout: 120000
+
+  publisher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [reviewer]
+    condition: "$reviewer.status == 'success'"
+    prompt: |
+      Publish the reviewed documentation to wiki.
+      Space: $params.space_key
+      Title: $params.page_title
+      Content: Use the final reviewed page HTML.
+    tools: [mcp__wiki__createwikiPage, mcp__wiki__updatewikiPage]
+    inject:
+      - workflow:wiki-doc-gen.reviewer
+    output: publish_result
+    budget: 0.25
+    turns: 5
+    timeout: 60000
+
+waves:
+  - name: "research"
+    agents: [code-researcher, prd-researcher, slack-researcher]
+    parallel: true
+  - name: "synthesis"
+    agents: [synthesizer]
+    gate: auto
+  - name: "review"
+    agents: [reviewer]
+    gate: confirm
+    gate_prompt: "Review complete. Publish to wiki?"
+  - name: "publish"
+    agents: [publisher]
+
+circuit_breaker:
+  max_total_budget: 5.00
+  max_total_turns: 100
+  max_total_duration: 600000
+  stuck_detection:
+    consecutive_identical_calls: 3
+    idle_timeout: 45000
+    action: terminate
+
+outputs:
+  documentation:
+    from: publisher
+    format: json
+    save_to: ".arma/outputs/doc-gen-$params.page_title.json"
+
+hooks:
+  on_start: "/log 'Starting doc-gen for: $params.topic'"
+  on_complete: "/notify main 'Documentation published: $params.page_title'"
+  on_failure: "/msg main 'Doc-gen failed at $failed_agent: $error'"
+
+meta:
+  layout:
+    code-researcher: { x: 100, y: 50 }
+    prd-researcher: { x: 300, y: 50 }
+    slack-researcher: { x: 500, y: 50 }
+    synthesizer: { x: 300, y: 200 }
+    reviewer: { x: 300, y: 350 }
+    publisher: { x: 300, y: 500 }
+  tags: [documentation, wiki, production]

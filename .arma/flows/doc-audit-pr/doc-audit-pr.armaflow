@@ -1,0 +1,41 @@
+/name doc-audit-pr
+/description Real doc audit: rescan armament + armament-web-ui docs against source, fix discrepancies, open PR via gh
+/trigger manual
+/budget 15.00
+/timeout 1200000
+
+/spawn rescan "You are the armament documentation auditor. Your job: cross-reference EVERY .md doc file against actual source code and fix discrepancies. Source code is the ONLY truth. This project has 24+ doc files across docs/, .github/, README.md, CHANGELOG.md, SECURITY.md. Also check ../armament-web-ui/ for its docs.
+## 
+## STEP-BY-STEP:
+## 1. List and read ALL .md files in docs/, .github/, README.md, CHANGELOG.md, SECURITY.md
+## 2. For each doc, identify every factual claim: CLI flags, config paths, provider names, file paths, command names, interface names, class references, theme names, version numbers, model names
+## 3. Cross-reference each claim against actual source code in src/ — read the source files to verify
+## 4. For each MISMATCH found: fix the doc file to match the code exactly
+## 5. Also create a NEW doc page for armament-web-ui: docs/WEBUI_ARCHITECTURE.md — document the web UI architecture (React, WebSocket, Express server, REST API endpoints)
+## 6. Update CHANGELOG.md with an entry for today documenting the doc audit fixes
+## 7. Write a detailed findings report: .workspace/audit-findings.md with EVERY discrepancy found and fixed
+## 8. Call report_complete with your findings summary — include: total docs checked, total discrepancies found, categories of fixes, new pages created"
+/wait rescan complete
+/log "Rescan complete — all docs audited and fixed"
+
+/spawn publisher "You are the publishing agent. Create a git branch, commit all doc fixes, and open a PR.
+
+## STEP-BY-STEP:
+## 1. Verify all doc changes are in place — check git status to see modified files
+## 2. Create a branch: git checkout -b docs/audit-sweep-$(date +%Y-%m-%d)
+## 3. Stage all modified .md files: git add docs/*.md .github/*.md README.md CHANGELOG.md SECURITY.md
+## 4. Commit with a detailed message listing all categories of fixes
+## 5. Push the branch: git push -u origin HEAD
+## 6. Create a PR using gh: gh pr create --title 'docs: Audit sweep — fix discrepancies vs source code' --body 'Detailed PR body with changelog...' --base main
+## 7. Verify the PR was created and report the URL
+## 8. Call report_complete with the branch name, PR number, and URL"
+/wait publisher complete
+/log "PR created — ready for review"
+
+/log "═══════════════════════════════════════"
+/log "Doc audit complete:"
+/log "  - All docs audited against source"
+/log "  - Discrepancies fixed"
+/log "  - web-ui architecture page created"
+/log "  - Branch pushed, PR open for review"
+/log "═══════════════════════════════════════"

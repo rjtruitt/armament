@@ -1,0 +1,159 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: ENFORCE FORMAT VIA EXEMPLAR
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: You need agents to output in a VERY specific format (JSON schema,
+#          wiki HTML, specific markdown structure). System prompts are
+#          guidelines — they drift. Few-shot examples in prompts cost tokens
+#          and still allow deviation.
+#
+# Solution: Inject synthetic history where the agent "already produced" an
+#           example in the exact format. LLMs are continuation machines —
+#           they'll match the pattern of their own "prior output" far more
+#           reliably than following format instructions.
+#
+# The trick: Show the agent it already wrote one entry correctly.
+#            It will continue the pattern for all subsequent entries.
+# ──────────────────────────────────────────────────────────────────────────────
+name: enforce-format-pattern
+description: Agent continues in exact format it "already started"
+
+trigger:
+  type: manual
+
+params:
+  endpoints:
+    type: array
+    required: true
+    description: "API endpoints to document"
+
+agents:
+  api-doc-writer:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: "Continue documenting the remaining endpoints in the same format."
+    tools: [read_file]
+    budget: 0.75
+    turns: 15
+
+    synthetic_history:
+      - role: user
+        content: |
+          Document each API endpoint in this exact wiki HTML format.
+          Do NOT deviate from the format.
+
+      - role: assistant
+        content: |
+          I'll document each endpoint. Starting with the first one:
+
+          <ac:structured-macro ac:name="expand">
+            <ac:parameter ac:name="title">POST /api/auth/login</ac:parameter>
+            <ac:rich-text-body>
+              <h4>Authentication: Login</h4>
+              <table>
+                <tr><th>Method</th><td>POST</td></tr>
+                <tr><th>Path</th><td>/api/auth/login</td></tr>
+                <tr><th>Auth Required</th><td>No</td></tr>
+                <tr><th>Rate Limit</th><td>10 req/min per IP</td></tr>
+              </table>
+
+              <h5>Request Body</h5>
+              <ac:structured-macro ac:name="code">
+                <ac:parameter ac:name="language">json</ac:parameter>
+                <ac:plain-text-body><![CDATA[{
+                  "email": "user@example.com",
+                  "password": "secret123",
+                  "mfa_code": "123456"  // optional
+                }]]></ac:plain-text-body>
+              </ac:structured-macro>
+
+              <h5>Response (200 OK)</h5>
+              <ac:structured-macro ac:name="code">
+                <ac:parameter ac:name="language">json</ac:parameter>
+                <ac:plain-text-body><![CDATA[{
+                  "access_token": "eyJhbG...",
+                  "refresh_token": "dGhpcyB...",
+                  "expires_in": 3600,
+                  "token_type": "Bearer"
+                }]]></ac:plain-text-body>
+              </ac:structured-macro>
+
+              <h5>Error Responses</h5>
+              <table>
+                <tr><th>Status</th><th>Code</th><th>Description</th></tr>
+                <tr><td>401</td><td>INVALID_CREDENTIALS</td><td>Email or password is incorrect</td></tr>
+                <tr><td>403</td><td>MFA_REQUIRED</td><td>MFA code required but not provided</td></tr>
+                <tr><td>429</td><td>RATE_LIMITED</td><td>Too many login attempts</td></tr>
+              </table>
+
+              <ac:structured-macro ac:name="info">
+                <ac:rich-text-body>
+                  <p><strong>Note:</strong> Tokens are JWT with RS256 signing. Refresh tokens are single-use and rotate on each refresh call.</p>
+                </ac:rich-text-body>
+              </ac:structured-macro>
+            </ac:rich-text-body>
+          </ac:structured-macro>
+
+      - role: user
+        content: "Perfect format. Continue with the remaining endpoints."
+
+    # Agent will now produce EVERY subsequent endpoint in this exact HTML structure.
+    # It "already" established the pattern — continuation bias does the rest.
+    # This is FAR more reliable than saying "use this format" in a system prompt.
+
+
+  # ── JSON Schema enforcement example ──
+  data-extractor:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: "Extract entities from the remaining documents in the same schema."
+    tools: [mcp__kb__search, mcp__kb__read_document]
+    budget: 0.50
+    turns: 10
+
+    synthetic_history:
+      - role: user
+        content: "Extract all entities from these documents into structured JSON."
+
+      - role: assistant
+        content: |
+          I'll extract entities from each document. Here's the first one:
+
+          ```json
+          {
+            "source": "Booking System PRD v2.3",
+            "source_url": "https://wiki.internal/pages/12345",
+            "extracted_at": "2026-05-18T14:30:00Z",
+            "entities": [
+              {
+                "type": "service",
+                "name": "booking-api",
+                "owner": "booking-team",
+                "description": "REST API gateway for all booking operations",
+                "dependencies": ["availability-svc", "pricing-engine", "auth-svc"],
+                "confidence": 0.95
+              },
+              {
+                "type": "event",
+                "name": "booking.created",
+                "producer": "booking-api",
+                "consumers": ["notification-svc", "analytics-pipeline"],
+                "schema_ref": "schemas/booking-created-v2.avro",
+                "confidence": 0.90
+              },
+              {
+                "type": "decision",
+                "title": "Cursor-based pagination over offset",
+                "date": "2025-08-15",
+                "decided_by": "alice",
+                "rationale": "Offset pagination breaks on large datasets with concurrent writes",
+                "confidence": 0.85
+              }
+            ]
+          }
+          ```
+
+      - role: user
+        content: "Exactly right. Continue with the next documents."
+
+    # Agent will output identical JSON schema for every subsequent extraction.
+    # No schema drift, no missing fields, no format creativity.

@@ -1,0 +1,241 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# GitHub Pages Doc Gen — full pipeline with hallucination detection
+# Publishes static HTML docs via feature branch PRs, not wiki.
+# ──────────────────────────────────────────────────────────────────────────────
+name: ghpages-doc-gen
+description: Code-driven documentation pipeline publishing to GitHub Pages with multi-pass hallucination checking
+version: "2.0.0"
+
+trigger:
+  type: manual
+
+params:
+  docs_repo:
+    type: string
+    required: true
+    description: "GitHub org/repo for the docs site (e.g. my-org/my-docs)"
+  source_repo:
+    type: string
+    required: true
+    description: "GitHub org/repo for source code (e.g. my-org/my-app)"
+  target_page:
+    type: string
+    required: true
+    description: "Relative path to page being updated (e.g. pages/systems/auth.html)"
+  topic:
+    type: string
+    required: true
+    description: "What system/feature to document"
+  style_guide:
+    type: string
+    default: "STYLE-GUIDE.md"
+    description: "Path to style guide within docs repo"
+  docs_branch:
+    type: string
+    default: "main"
+    description: "Branch to read existing pages from for style reference"
+
+agents:
+  code-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Research the codebase in $params.source_repo for everything related to: $params.topic
+      Find all relevant files, functions, classes, interfaces, and data flows.
+      Produce a structured summary with file paths and line numbers for every claim.
+      Read test files too -- they reveal expected behavior.
+    tools: [read_file, grep, find_files, list_directory, mcp__github__get_file_contents, mcp__github__search_code, mcp__github__list_commits]
+    inject:
+      - workflows/doc-gen/partials/research-instructions.md
+    output: code_findings
+    budget: 1.00
+    turns: 30
+
+  context-researcher:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Search for design docs, architecture decisions, and business context about: $params.topic
+      Focus on the "why" -- requirements, constraints, and trade-offs.
+      Cite every source with full URLs.
+    tools: [mcp__kb__search, mcp__kb__read_document, mcp__kb__chat]
+    inject:
+      - workflows/doc-gen/partials/research-instructions.md
+    output: context_findings
+    budget: 0.50
+    turns: 20
+
+  site-scanner:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Read the existing pages in $params.docs_repo from the $params.docs_branch branch.
+      Focus on sibling pages in the same section as $params.target_page.
+      Extract: section structure, CSS class patterns used, heading hierarchy, diagram patterns.
+      Report what patterns new content should match.
+    tools: [mcp__github__get_file_contents, mcp__github__list_commits]
+    output: site_scan
+    budget: 0.25
+    turns: 10
+
+  synthesizer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [code-researcher, context-researcher, site-scanner]
+    prompt: |
+      Generate documentation HTML for: $params.topic
+      Target page: $params.target_page
+
+      Source hierarchy (trust in this order):
+      1. Code (ground truth -- every claim needs file:line citation)
+      2. Design docs (business context and "why")
+      3. Live site scan (style/pattern reference)
+
+      Follow the style guide exactly. Output semantic HTML matching the site's patterns.
+      No speculation -- if you can't verify it in code, don't document it.
+    inject:
+      - workflow:ghpages-doc-gen.code-researcher
+      - workflow:ghpages-doc-gen.context-researcher
+      - workflow:ghpages-doc-gen.site-scanner
+      # Pull style guide directly from the docs repo -- always fresh
+      - github://$params.docs_repo/$params.style_guide
+    output: draft_page
+    budget: 1.50
+    turns: 10
+
+  # ── Hallucination Detection ──────────────────────────────────────────────
+  fact-checker:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [synthesizer]
+    prompt: |
+      You are a fact-checking agent. Verify every claim in the generated documentation.
+
+      For each factual claim:
+      1. Find the cited source file and line
+      2. Verify the claim matches what's actually in the code
+      3. Flag claims with NO source citation
+      4. Flag claims where source contradicts the claim
+      5. Check that referenced class names, method names, and field names exist
+
+      Output a JSON report:
+      {
+        "verified": [{ "claim": "", "source": "", "status": "confirmed" }],
+        "unverified": [{ "claim": "", "reason": "" }],
+        "contradicted": [{ "claim": "", "source_says": "", "doc_says": "" }],
+        "score": 0.95
+      }
+
+      Be aggressive. If you can't independently verify it, flag it.
+    tools: [read_file, grep, mcp__github__get_file_contents, mcp__github__search_code]
+    inject:
+      - workflow:ghpages-doc-gen.synthesizer
+      - workflow:ghpages-doc-gen.code-researcher
+    output: fact_check_report
+    budget: 1.00
+    turns: 20
+
+  style-checker:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [synthesizer, site-scanner]
+    prompt: |
+      Compare the generated HTML against the style guide and live site patterns.
+      Check:
+      - Does it use the correct CSS classes?
+      - Does the heading hierarchy match sibling pages?
+      - Are diagrams using the correct div patterns (not Mermaid)?
+      - Are source links formatted correctly?
+      - Any patterns used that don't exist on the live site?
+
+      Output issues with exact line references.
+    inject:
+      - workflow:ghpages-doc-gen.synthesizer
+      - workflow:ghpages-doc-gen.site-scanner
+      - github://$params.docs_repo/$params.style_guide
+    output: style_report
+    budget: 0.25
+    turns: 10
+
+  # ── Final Edit ──────────────────────────────────────────────────────────
+  final-editor:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [fact-checker, style-checker]
+    condition: "$fact-checker.output.score < 1.0 || $style-checker.output.issues.length > 0"
+    prompt: |
+      Fix ALL flagged issues in the documentation:
+      - Remove or correct unverified claims
+      - Fix contradictions (trust code over everything)
+      - Fix style violations to match the site patterns
+      - Mark anything uncertain with <!-- NEEDS VERIFICATION -->
+
+      Do NOT add new information. Only fix what was flagged.
+    inject:
+      - workflow:ghpages-doc-gen.synthesizer
+      - workflow:ghpages-doc-gen.fact-checker
+      - workflow:ghpages-doc-gen.style-checker
+    output: final_page
+    budget: 0.75
+    turns: 5
+
+  publisher:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [final-editor, synthesizer]
+    prompt: |
+      Publish to GitHub Pages:
+      1. Create feature branch from main in $params.docs_repo
+      2. Write the final HTML to $params.target_page
+      3. Update search index if applicable
+      4. Create a PR with summary of changes and validation results
+
+      Use final-editor output if it exists, otherwise synthesizer output.
+      Do NOT merge the PR -- leave for human review.
+    tools: [mcp__github__create_branch, mcp__github__push_files, mcp__github__create_pull_request]
+    inject:
+      - workflow:ghpages-doc-gen.final-editor
+      - workflow:ghpages-doc-gen.fact-checker
+    output: publish_result
+    budget: 0.25
+    turns: 5
+
+waves:
+  - name: "research"
+    agents: [code-researcher, context-researcher, site-scanner]
+    parallel: true
+  - name: "synthesis"
+    agents: [synthesizer]
+  - name: "hallucination-detection"
+    agents: [fact-checker, style-checker]
+    parallel: true
+  - name: "final-edit"
+    agents: [final-editor]
+    gate: confirm
+    gate_prompt: |
+      Fact check score: $fact-checker.output.score
+      Style issues found: $style-checker.output.issues.length
+      Proceed with corrections and publish PR?
+  - name: "publish"
+    agents: [publisher]
+
+circuit_breaker:
+  max_total_budget: 7.00
+  max_total_turns: 120
+  max_total_duration: 900000
+  stuck_detection:
+    consecutive_identical_calls: 3
+    idle_timeout: 45000
+    action: terminate
+
+outputs:
+  documentation:
+    from: publisher
+    format: json
+  quality_report:
+    from: fact-checker
+    format: json
+    save_to: ".arma/outputs/quality-report-$params.target_page.json"
+
+meta:
+  tags: [documentation, github-pages, hallucination-detection, static-site]

@@ -1,0 +1,159 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: OUTPUT ENRICHMENT
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: MCP tools return raw API responses. Agents waste tokens parsing
+#          irrelevant fields, navigating pagination, or missing context that
+#          would help them make better decisions.
+#
+# Solution: Wrap tools to post-process their output. Strip noise, add context,
+#           flatten nested structures, or merge related data.
+#
+# Use cases:
+#   - Strip verbose metadata the agent doesn't need
+#   - Add computed fields (age of issue, file size category)
+#   - Merge related lookups (issue + comments in one response)
+#   - Convert formats (HTML → markdown, XML → JSON)
+#   - Add hints for the agent ("this file was modified recently")
+# ──────────────────────────────────────────────────────────────────────────────
+name: output-enrichment-demo
+description: Post-process tool outputs to reduce noise and add context
+
+trigger:
+  type: manual
+
+wrappers:
+  # Strip wiki noise, keep just the content
+  - name: wiki-slim
+    description: "Strip verbose wiki metadata, return just useful fields"
+    tools:
+      - mcp__wiki__getwikiPage
+    priority: 50
+    handler: |
+      const result = await callReal();
+      // wiki returns a TON of metadata the agent doesn't need
+      return {
+        type: 'replace',
+        output: {
+          id: result.id,
+          title: result.title,
+          version: result.version?.number,
+          lastModified: result.version?.when,
+          lastModifiedBy: result.version?.by?.displayName,
+          body: result.body?.storage?.value || result.body?.view?.value,
+          parentId: result.ancestors?.[result.ancestors.length - 1]?.id,
+          labels: result.metadata?.labels?.results?.map(l => l.name) || [],
+          _tokensSaved: '~500 tokens of metadata stripped'
+        }
+      };
+
+  # Enrich Jira issues with computed fields
+  - name: jira-enriched
+    description: "Add computed fields to Jira issues"
+    tools:
+      - mcp__wiki__getJiraIssue
+    priority: 50
+    handler: |
+      const result = await callReal();
+      const created = new Date(result.fields?.created);
+      const now = new Date();
+      const ageInDays = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+
+      return {
+        type: 'replace',
+        output: {
+          key: result.key,
+          summary: result.fields?.summary,
+          status: result.fields?.status?.name,
+          priority: result.fields?.priority?.name,
+          assignee: result.fields?.assignee?.displayName || 'Unassigned',
+          reporter: result.fields?.reporter?.displayName,
+          created: result.fields?.created,
+          updated: result.fields?.updated,
+          labels: result.fields?.labels || [],
+          // Computed fields
+          _ageInDays: ageInDays,
+          _ageCategory: ageInDays > 90 ? 'stale' : ageInDays > 30 ? 'aging' : 'recent',
+          _isBlocked: result.fields?.status?.name === 'Blocked',
+          _hasLinkedPRs: (result.fields?.issuelinks || []).some(l => l.type?.name === 'is fixed by'),
+          _commentCount: result.fields?.comment?.total || 0,
+          _lastCommentAge: result.fields?.comment?.comments?.length > 0
+            ? Math.floor((now - new Date(result.fields.comment.comments.slice(-1)[0].created)) / (1000 * 60 * 60 * 24))
+            : null,
+          _tokensSaved: '~1000 tokens of raw API response stripped'
+        }
+      };
+
+  # GitHub file contents — add git blame context
+  - name: github-with-context
+    description: "Add last-modified info and file metadata to code reads"
+    tools:
+      - mcp__github__get_file_contents
+    priority: 50
+    handler: |
+      const result = await callReal();
+      const content = result.content || result;
+      const lineCount = typeof content === 'string' ? content.split('\n').length : 0;
+
+      return {
+        type: 'replace',
+        output: {
+          ...result,
+          _lineCount: lineCount,
+          _sizeCategory: lineCount > 500 ? 'large' : lineCount > 100 ? 'medium' : 'small',
+          _fileType: ctx.inputs.path?.split('.').pop() || 'unknown',
+          _hint: lineCount > 300
+            ? 'Large file — consider searching for specific functions rather than reading the whole thing'
+            : null
+        }
+      };
+
+  # [KB] search — flatten and deduplicate
+  - name: [KB]-flatten
+    description: "Flatten [KB] results and remove duplicates"
+    tools:
+      - mcp__kb__search
+    priority: 50
+    handler: |
+      const result = await callReal();
+      const seen = new Set();
+      const unique = (result.results || []).filter(r => {
+        const key = r.url || r.title;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).map(r => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.snippets?.[0]?.text || r.body?.substring(0, 200),
+        source: r.datasource,
+        lastModified: r.updatedAt,
+        author: r.author?.name
+      }));
+
+      return {
+        type: 'replace',
+        output: {
+          results: unique,
+          totalFound: result.totalResults || unique.length,
+          deduplicated: (result.results || []).length - unique.length,
+          _tokensSaved: `~${((result.results || []).length - unique.length) * 200} tokens of duplicates removed`
+        }
+      };
+
+agents:
+  analyst:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Investigate the current state of the OppyHub system.
+      Check Jira for open issues, wiki for docs, and GitHub for recent changes.
+    tools:
+      - mcp__wiki__getJiraIssue
+      - mcp__wiki__getwikiPage
+      - mcp__github__get_file_contents
+      - mcp__kb__search
+    budget: 2.00
+    turns: 20
+
+# Every tool call returns a cleaner, smaller, more useful response.
+# Agent gets better data with fewer tokens. Everyone wins.

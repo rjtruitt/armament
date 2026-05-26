@@ -1,0 +1,169 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: PREFETCH + MANIFEST
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: Agent calls tool → gets response → reads it → calls another tool →
+#          reads it → ... Each call costs tokens because the LLM has to
+#          process every response. For bulk data, this is wasteful.
+#
+# Solution: Prefetch everything with a script (no LLM cost), generate a
+#           manifest of what exists, then let the agent decide what to
+#           actually read. The wrapper serves pre-fetched content from disk.
+#
+# The flow:
+#   1. Script runs (no LLM) → bulk-pulls data to ./cache/
+#   2. Script generates manifest.json (file list + metadata, ~2KB)
+#   3. Agent reads manifest (cheap — small document)
+#   4. Agent decides which specific files to read
+#   5. Wrapper serves those files from local cache (no API calls)
+#
+# Result: Agent makes smart decisions about WHAT to read,
+#         but never pays for HOW to read it.
+# ──────────────────────────────────────────────────────────────────────────────
+name: prefetch-manifest-demo
+description: Script-based bulk prefetch with LLM reading from local cache
+
+trigger:
+  type: manual
+
+params:
+  repo:
+    type: string
+    default: "myorg/myrepo"
+  wiki_page_id:
+    type: string
+    default: "1070865008"
+
+# Prefetch phase — runs BEFORE agents, no LLM involved
+prefetch:
+  scripts:
+    - name: sync-repo
+      command: |
+        cd ~/projects/$params.repo && git pull --quiet
+        find src -name "*.ts" -newer .last-workflow-run | while read f; do
+          cp "$f" ./cache/repo/"$f"
+        done
+        find src -name "*.ts" -newer .last-workflow-run -printf '%p\t%T@\t%s\n' > ./cache/repo-manifest.tsv
+        touch .last-workflow-run
+      outputs: ./cache/repo-manifest.tsv
+
+    - name: sync-wiki
+      command: |
+        ./scripts/sync-wiki.sh $params.wiki_page_id ./cache/wiki
+        # Generate manifest from frontmatter
+        for f in ./cache/wiki/*.md; do
+          id=$(grep "^id:" "$f" | cut -d' ' -f2)
+          title=$(grep "^title:" "$f" | cut -d'"' -f2)
+          version=$(grep "^version:" "$f" | cut -d' ' -f2)
+          modified=$(grep "^modified:" "$f" | cut -d' ' -f2)
+          echo "$id|$title|$version|$modified"
+        done > ./cache/wiki-manifest.csv
+      outputs: ./cache/wiki-manifest.csv
+
+    - name: sync-jira
+      command: |
+        # Pull recent SF project issues
+        curl -s -H "Authorization: Basic $JIRA_AUTH" \
+          "https://travel-cogroup.wiki.net/rest/api/3/search?jql=project=SF+AND+updated>=-7d&maxResults=50" \
+          | jq '.issues[] | {key, summary: .fields.summary, status: .fields.status.name, updated: .fields.updated}' \
+          > ./cache/jira-recent.jsonl
+      outputs: ./cache/jira-recent.jsonl
+
+wrappers:
+  # Serve repo files from prefetched cache
+  - name: repo-from-cache
+    description: "Serve code files from prefetched local cache"
+    tools:
+      - mcp__github__get_file_contents
+    priority: 10
+    handler: |
+      const cachePath = `./cache/repo/${ctx.inputs.path}`;
+      try {
+        const content = await readFile(cachePath, 'utf-8');
+        return {
+          type: 'replace',
+          output: { content, path: ctx.inputs.path, _source: 'prefetch-cache' }
+        };
+      } catch {
+        return { type: 'passthrough' }; // Not in cache, call real API
+      }
+
+  # Serve wiki pages from prefetched cache
+  - name: wiki-from-cache
+    description: "Serve wiki pages from prefetched markdown cache"
+    tools:
+      - mcp__wiki__getwikiPage
+    priority: 10
+    handler: |
+      const pageId = ctx.inputs.pageId || ctx.inputs.id;
+      const files = await readdir('./cache/wiki');
+      const match = files.find(f => f.endsWith(`-${pageId}.md`));
+      if (match) {
+        const content = await readFile(`./cache/wiki/${match}`, 'utf-8');
+        return { type: 'replace', output: { content, _source: 'prefetch-cache', _format: 'markdown' } };
+      }
+      return { type: 'passthrough' };
+
+  # Serve Jira issues from prefetched JSONL
+  - name: jira-from-cache
+    description: "Serve recent Jira issues from prefetched cache"
+    tools:
+      - mcp__wiki__getJiraIssue
+    priority: 10
+    handler: |
+      const issueKey = ctx.inputs.issueKey || ctx.inputs.key;
+      const lines = (await readFile('./cache/jira-recent.jsonl', 'utf-8')).split('\n').filter(Boolean);
+      const match = lines.map(l => JSON.parse(l)).find(i => i.key === issueKey);
+      if (match) {
+        return { type: 'replace', output: { ...match, _source: 'prefetch-cache' } };
+      }
+      return { type: 'passthrough' }; // Not in recent cache, call real API
+
+agents:
+  # First agent: reads manifests (tiny documents) and decides what matters
+  triager:
+    provider: anthropic
+    model: claude-haiku
+    prompt: |
+      Read the manifests and identify what changed recently:
+      - Repo manifest: ./cache/repo-manifest.tsv (files modified since last run)
+      - wiki manifest: ./cache/wiki-manifest.csv (page versions)
+      - Jira recent: ./cache/jira-recent.jsonl (issues updated in last 7 days)
+
+      Output a prioritized list of items that need documentation review.
+    tools: [read_file]
+    output: work_items
+    budget: 0.20
+    turns: 5
+
+  # Second agent: reads specific files based on triager's decisions
+  researcher:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [triager]
+    prompt: |
+      For each item identified by the triager, read the relevant files and
+      analyze what changed. All reads will be served from local cache (free).
+    tools:
+      - mcp__github__get_file_contents
+      - mcp__wiki__getwikiPage
+      - mcp__wiki__getJiraIssue
+      - read_file
+    inject:
+      - workflow:prefetch-manifest-demo.triager
+    budget: 1.50
+    turns: 30
+
+waves:
+  - name: "triage"
+    agents: [triager]
+  - name: "research"
+    agents: [researcher]
+
+# Cost breakdown:
+# - Prefetch scripts: $0 (no LLM)
+# - Triager reads manifests: ~$0.01 (tiny files, cheap model)
+# - Researcher reads files: ~$0.50 (from cache, but LLM still processes content)
+# - Total: ~$0.51 vs ~$3.00 if every read went through MCP API
+#
+# The key savings: triager eliminates 90% of reads by identifying
+# what actually changed. Researcher only processes the delta.

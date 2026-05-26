@@ -1,0 +1,20 @@
+/** Core interfaces: all type definitions for sessions, providers, commands, channels, agents, and more. */
+export type { IRepl } from './IRepl.js';
+export type { IReplConfig, IModelConfig, IRateLimitConfig } from './IReplConfig.js';
+export type { IProviderConfig, IModelPricing, ProviderType } from './IProviderConfig.js';
+export type { ISession, SessionMode, ISessionExport } from './ISession.js';
+export type { IMessage, MessageRole, IMessageMetadata, IToolCall, IToolResult } from './IMessage.js';
+export type { IUsageStats, IContextUsage, ICostBreakdown } from './IUsageStats.js';
+export type { ICommand, ICommandContext, ICommandResult, ICommandRegistry } from './ICommandRegistry.js';
+export type { IRenderer, IStatusState, IFileEntry, ICommitInfo, StatusType } from './IRenderer.js';
+export type { IStreamHandler, IStreamToolEvent, IStreamToolResult, IStreamMetadata } from './IStreamHandler.js';
+export type { IEventBus, ArmamentEvent } from './IEventBus.js';
+export type { IChannel, IChannelManager, IChannelListEntry } from './IChannelManager.js';
+export type { IAgentInstance, IAgentManager, IAgentSpawnOptions, AgentStatus } from './IAgentManager.js';
+export type { IScriptEngine, IAlias, ITrigger, IKeyBinding, ITimer, ILoadedScript, IScriptConfig, IScriptViewAPI } from './IScriptEngine.js';
+export type { IHookSystem, IHook, IHookContext, IHookResult, HookPoint } from './IHookSystem.js';
+export type { IKeyboardNavigation, IKeyboardEvent, IKeyBinding as INavKeyBinding, IFocusState, INavigationScheme, KeyModifier, NavigationTarget } from './IKeyboardNav.js';
+export type { ISessionConfigManager, ISessionConfigMenu, IPermissionManager, IBudgetManager, IBudgetConfig, IPathPermission, IProviderEntry, INodeConfig, IWorkspaceConfig, IMcpServerEntry, PermissionScope, PermissionAction } from './ISessionConfig.js';
+export type { ILLMProvider, IProviderPool } from './IProviderPool.js';
+export type { IChannelAgent, IChannelAgentConfig, ChannelAgentFactory, StickyNote, StickyPosition } from './IChannelAgent.js';
+export type { ITaskRuntime, ITaskRuntimeConfig } from './ITaskRuntime.js';

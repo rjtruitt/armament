@@ -1,0 +1,245 @@
+{
+  "name": "code-audit-swarm",
+  "description": "Pre-spawns 4 specialist agents, waits for results, then seeds a synthesizer with fake assistant history containing all findings — the synthesizer thinks it already gathered the data itself",
+  "trigger": {
+    "type": "manual"
+  },
+  "nodes": [
+    {
+      "id": "parallel-0",
+      "type": "parallel",
+      "config": {}
+    },
+    {
+      "id": "dead-code-1",
+      "type": "spawn",
+      "config": {
+        "agentName": "dead-code",
+        "task": "Scan all src/ directories in this project. Find exports that nothing imports, functions never called, config options read but never set, event listeners registered but never triggered, and type definitions with zero usage. Use read_file and list_directory to trace imports. Report ONLY confirmed dead symbols with exact file:line and why it's dead. Skip test files and node_modules."
+      }
+    },
+    {
+      "id": "bug-hunter-2",
+      "type": "spawn",
+      "config": {
+        "agentName": "bug-hunter",
+        "task": "Scan this project for logic bugs. Find: promises not awaited (missing await on async calls), race conditions (shared mutable state accessed across async boundaries), off-by-one in loops/slices, null/undefined access without guards on optional chains, Map.get() used without nullish handling, event listener leaks (addEventListener without matching remove), unclosed resources (streams, file handles, intervals not cleared). Report exact file:line, the 3-5 line code snippet, what breaks, and the fix. Skip stylistic issues."
+      }
+    },
+    {
+      "id": "perf-analyst-3",
+      "type": "spawn",
+      "config": {
+        "agentName": "perf-analyst",
+        "task": "Scan this project for performance problems. Find: O(n^2) or worse loops (nested .find/.filter/.includes over arrays), repeated work that should be cached (same computation in hot render/tick paths), large string concatenation in loops (should use array+join), unnecessary re-renders (full buffer rebuilds when partial updates exist), synchronous file I/O on hot paths, regex compilation inside loops. Report file:line, the code, estimated cost, and the fix."
+      }
+    },
+    {
+      "id": "consistency-checker-4",
+      "type": "spawn",
+      "config": {
+        "agentName": "consistency-checker",
+        "task": "Scan this project for interface/contract mismatches. Find: places where a Map key format differs between writer and reader (e.g. channel name with/without # prefix), type assertions (as any, as unknown) that mask real type errors, event names that are emitted but never listened to (or vice versa), config property names that differ between where they're set and where they're read, function signatures that disagree with their callers. Report file:line for BOTH sides of each mismatch."
+      }
+    },
+    {
+      "id": "end-5",
+      "type": "end",
+      "config": {}
+    },
+    {
+      "id": "join-6",
+      "type": "join",
+      "config": {
+        "agentNames": [
+          "dead-code",
+          "bug-hunter",
+          "perf-analyst",
+          "consistency-checker"
+        ]
+      }
+    },
+    {
+      "id": "synthesizer-7",
+      "type": "spawn",
+      "config": {
+        "agentName": "synthesizer"
+      }
+    },
+    {
+      "id": "synthesizer-8",
+      "type": "task",
+      "config": {
+        "action": "seed",
+        "target": "synthesizer",
+        "role": "assistant",
+        "content": "I've dispatched 4 specialist agents to audit the codebase. Let me collect their findings now."
+      }
+    },
+    {
+      "id": "collect-9",
+      "type": "join",
+      "config": {
+        "agentNames": [
+          "dead-code",
+          "bug-hunter",
+          "perf-analyst",
+          "consistency-checker"
+        ],
+        "collectTarget": "synthesizer"
+      }
+    },
+    {
+      "id": "task-10",
+      "type": "task",
+      "config": {
+        "action": "msg",
+        "target": "synthesizer",
+        "message": "All agent reports are above. Now deduplicate, remove speculation, keep only confirmed issues. Rank by severity: data-loss bugs > logic bugs > perf sinks > dead code > inconsistencies. Output a numbered list, max 25 items. Each item: severity tag, file:line, 5-line code snippet, what breaks, the fix as actual code."
+      }
+    },
+    {
+      "id": "wait-11",
+      "type": "wait",
+      "config": {
+        "agentName": "synthesizer"
+      }
+    },
+    {
+      "id": "task-12",
+      "type": "task",
+      "config": {
+        "action": "log",
+        "message": "Swarm audit complete — check #synthesizer for ranked results"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "parallel-0",
+      "to": "dead-code-1"
+    },
+    {
+      "from": "dead-code-1",
+      "to": "bug-hunter-2"
+    },
+    {
+      "from": "bug-hunter-2",
+      "to": "perf-analyst-3"
+    },
+    {
+      "from": "perf-analyst-3",
+      "to": "consistency-checker-4"
+    },
+    {
+      "from": "parallel-0",
+      "to": "parallel-0"
+    },
+    {
+      "from": "parallel-0",
+      "to": "end-5"
+    },
+    {
+      "from": "parallel-0",
+      "to": "dead-code-1"
+    },
+    {
+      "from": "dead-code-1",
+      "to": "end-5"
+    },
+    {
+      "from": "parallel-0",
+      "to": "bug-hunter-2"
+    },
+    {
+      "from": "bug-hunter-2",
+      "to": "end-5"
+    },
+    {
+      "from": "parallel-0",
+      "to": "perf-analyst-3"
+    },
+    {
+      "from": "perf-analyst-3",
+      "to": "end-5"
+    },
+    {
+      "from": "parallel-0",
+      "to": "consistency-checker-4"
+    },
+    {
+      "from": "consistency-checker-4",
+      "to": "end-5"
+    },
+    {
+      "from": "consistency-checker-4",
+      "to": "end-5",
+      "label": "chain"
+    },
+    {
+      "from": "dead-code-1",
+      "to": "join-6",
+      "label": "join"
+    },
+    {
+      "from": "bug-hunter-2",
+      "to": "join-6",
+      "label": "join"
+    },
+    {
+      "from": "perf-analyst-3",
+      "to": "join-6",
+      "label": "join"
+    },
+    {
+      "from": "consistency-checker-4",
+      "to": "join-6",
+      "label": "join"
+    },
+    {
+      "from": "join-6",
+      "to": "synthesizer-7",
+      "label": "chain"
+    },
+    {
+      "from": "synthesizer-8",
+      "to": "synthesizer-7",
+      "label": "seed"
+    },
+    {
+      "from": "dead-code-1",
+      "to": "collect-9",
+      "label": "collect"
+    },
+    {
+      "from": "bug-hunter-2",
+      "to": "collect-9",
+      "label": "collect"
+    },
+    {
+      "from": "perf-analyst-3",
+      "to": "collect-9",
+      "label": "collect"
+    },
+    {
+      "from": "consistency-checker-4",
+      "to": "collect-9",
+      "label": "collect"
+    },
+    {
+      "from": "collect-9",
+      "to": "task-10",
+      "label": "chain"
+    },
+    {
+      "from": "synthesizer-7",
+      "to": "wait-11",
+      "label": "wait"
+    },
+    {
+      "from": "wait-11",
+      "to": "task-12",
+      "label": "chain"
+    }
+  ]
+}

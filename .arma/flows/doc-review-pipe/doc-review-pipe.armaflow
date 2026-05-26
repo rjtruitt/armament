@@ -1,0 +1,21 @@
+/name doc-review-pipe
+/description Review docs, extract structured findings, pipe through formatter, deliver to writer
+
+# Step 1: Analyst reviews docs with a structured completion schema
+/chain reviewer "Review the README.md and any docs/ files in this project. Identify gaps, typos, outdated info, and missing sections."
+  /complete --purpose "Your findings feed a formatting script that groups issues by type" --sticky --sticky_description "Fill out every field carefully — the formatter needs structured data"
+    /field issues string[] required "Each documentation issue found, one per entry"
+    /field severity enum(low,medium,high) required "Overall documentation quality — high means blocking issues"
+    /field missing_sections string[] "Sections that should exist but don't"
+    /field outdated string[] "Statements that are no longer accurate"
+
+# Step 2: Pipe structured output through a formatting script
+/pipe reviewer -> ./.arma/scripts/format-doc-issues.py
+
+# Step 3: Writer agent receives formatted results and produces fixes
+/spawn writer
+/seed writer user "You will receive a formatted report of documentation issues. For each issue, write the corrected text or new section content."
+/msg writer $pipe_result
+/wait writer complete
+
+/log "Doc review pipeline complete — see #writer for results"

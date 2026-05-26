@@ -1,0 +1,122 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ETL Validation — validate data pipeline outputs, flag anomalies
+# ──────────────────────────────────────────────────────────────────────────────
+name: etl-validation
+description: Validate ETL pipeline outputs and flag data quality issues
+version: "1.0.0"
+
+trigger:
+  type: event
+  event: etl_complete
+
+params:
+  pipeline:
+    type: string
+    required: true
+    description: "Pipeline name that just completed"
+  output_path:
+    type: string
+    required: true
+    description: "Path to pipeline output data"
+  expected_schema:
+    type: string
+    description: "Path to schema definition file"
+
+agents:
+  schema-validator:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Validate the output at $params.output_path against schema at $params.expected_schema.
+      Check:
+      - All required fields present
+      - Data types correct
+      - No unexpected null values in non-nullable fields
+      - Enum values within allowed set
+
+      Report violations with row counts.
+    tools: [read_file, list_directory]
+    output: schema_report
+    budget: 0.15
+    turns: 10
+
+  anomaly-detector:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Analyze $params.output_path for statistical anomalies:
+      - Row count vs historical average (flag if >2 std dev)
+      - Distribution shifts in key numeric columns
+      - Unusual null patterns
+      - Duplicate detection
+      - Timestamp gaps or out-of-order records
+
+      Compare against recent runs if historical data available.
+    tools: [read_file]
+    output: anomaly_report
+    budget: 0.25
+    turns: 10
+
+  completeness-checker:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Check data completeness for $params.pipeline:
+      - Expected date range covered?
+      - All expected source partitions represented?
+      - No missing time windows?
+      - Cross-reference counts with source system if available
+    tools: [read_file]
+    output: completeness_report
+    budget: 0.10
+    turns: 8
+
+  report-compiler:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [schema-validator, anomaly-detector, completeness-checker]
+    prompt: |
+      Compile data quality report for $params.pipeline:
+
+      Overall Status: PASS / WARN / FAIL
+
+      Sections:
+      - Schema Validation: summary + violations
+      - Anomalies: flagged items with severity
+      - Completeness: coverage assessment
+
+      If FAIL, recommend: investigate further, rerun, or rollback.
+    inject:
+      - workflow:etl-validation.schema-validator
+      - workflow:etl-validation.anomaly-detector
+      - workflow:etl-validation.completeness-checker
+    output: quality_report
+    budget: 0.15
+    turns: 5
+
+waves:
+  - name: "validation"
+    agents: [schema-validator, anomaly-detector, completeness-checker]
+    parallel: true
+  - name: "reporting"
+    agents: [report-compiler]
+
+circuit_breaker:
+  max_total_budget: 1.00
+  max_total_turns: 40
+  stuck_detection:
+    consecutive_identical_calls: 2
+    action: terminate
+
+outputs:
+  report:
+    from: report-compiler
+    format: json
+    save_to: ".arma/outputs/etl-validation-$params.pipeline.json"
+
+hooks:
+  on_complete: "/log 'ETL validation for $params.pipeline: $quality_report.status'"
+  on_failure: "/notify #data-eng 'ETL validation failed for $params.pipeline'"
+
+meta:
+  tags: [data, etl, validation, quality]

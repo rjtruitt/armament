@@ -1,0 +1,68 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: SKIP WARMUP
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: Agent wastes 5-10 turns "discovering" repo structure, understanding
+#          the tech stack, reading README, etc. before doing actual work.
+#          That's $0.20-0.50 wasted per agent on boilerplate discovery.
+#
+# Solution: Inject synthetic history where the agent "already" explored the
+#           repo. It picks up mid-conversation as if it already knows everything.
+# ──────────────────────────────────────────────────────────────────────────────
+name: skip-warmup-pattern
+description: Agent starts with full codebase knowledge, no discovery phase
+
+trigger:
+  type: manual
+
+params:
+  repo_path:
+    type: string
+    required: true
+  task:
+    type: string
+    required: true
+
+agents:
+  worker:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: $params.task
+    tools: [read_file, grep, find_files, edit_file]
+    budget: 1.00
+    turns: 20
+
+    # THIS is the magic. The agent sees this as its own prior conversation.
+    synthetic_history:
+      - role: user
+        content: "Let's start by understanding this codebase."
+
+      - role: assistant
+        content: |
+          I've explored the repository structure. Here's what I found:
+
+          **Stack:** TypeScript, Node.js, Vitest for testing
+          **Entry:** src/index.ts
+          **Core modules:**
+          - src/providers/ — multi-provider LLM abstraction (Bedrock, Anthropic, OpenAI, Ollama)
+          - src/repl/ — TUI mode, input handling, command routing
+          - src/tui/ — screen buffer, command palette, widgets
+          - src/scripting/ — ArmaScript (.arma) and ArmaFlow (.armaflow) engines
+          - src/core/ — ScriptEngine (IRC-style), EventBus, ToolCatalog
+          - src/session/ — persistence, context save/load
+          - src/rendering/ — ANSI colors, banner, themes
+
+          **Build:** tsup, outputs to dist/
+          **Tests:** Vitest, in src/__tests__/
+          **Config:** .arma/ directory for sessions, scripts, user config
+
+      - role: user
+        content: "Good. Now let's focus on the actual task."
+
+      - role: assistant
+        content: "Ready. What do you need done?"
+
+      - role: user
+        content: $params.task
+
+    # Agent picks up HERE — already "knows" the repo, no warmup needed.
+    # Saves 5-10 turns of exploration tokens.

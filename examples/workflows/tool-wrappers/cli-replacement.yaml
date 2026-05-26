@@ -1,0 +1,126 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: CLI REPLACEMENT
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: MCP servers use HTTP/stdio protocols which add overhead. For many
+#          operations, a local CLI tool (gh, jira, sf, curl) does the same
+#          thing faster and cheaper.
+#
+# Solution: Wrap MCP tools with CLI equivalents. The agent calls the tool
+#           normally; the wrapper executes a shell command instead.
+#
+# When to use:
+#   - You have the CLI installed and authenticated
+#   - The operation is a simple read (not complex multi-step)
+#   - You want to avoid MCP server startup overhead
+#   - The CLI output can be transformed to match expected MCP response format
+#
+# When NOT to use:
+#   - Write operations that need transactional guarantees
+#   - Operations where the MCP server does important validation
+#   - When you need the exact response format for downstream processing
+# ──────────────────────────────────────────────────────────────────────────────
+name: cli-replacement-demo
+description: Replace MCP tool calls with local CLI commands
+
+trigger:
+  type: manual
+
+params:
+  issue_key:
+    type: string
+    default: "SF-1234"
+  repo:
+    type: string
+    default: "myorg/myrepo"
+
+wrappers:
+  # Replace GitHub MCP with gh CLI
+  - name: gh-cli
+    description: "Use gh CLI for GitHub operations"
+    tools:
+      - mcp__github__get_file_contents
+      - mcp__github__list_commits
+      - mcp__github__search_code
+      - mcp__github__list_issues
+    priority: 10
+    handler: |
+      switch (ctx.tool) {
+        case 'mcp__github__get_file_contents': {
+          const { owner, repo, path, ref } = ctx.inputs;
+          const refFlag = ref ? `--ref ${ref}` : '';
+          const result = await exec(`gh api repos/${owner}/${repo}/contents/${path} ${refFlag}`);
+          return { type: 'replace', output: JSON.parse(result) };
+        }
+        case 'mcp__github__list_commits': {
+          const { owner, repo, sha, per_page } = ctx.inputs;
+          const limit = per_page || 10;
+          const result = await exec(`gh api repos/${owner}/${repo}/commits?per_page=${limit}`);
+          return { type: 'replace', output: JSON.parse(result) };
+        }
+        case 'mcp__github__search_code': {
+          const { query } = ctx.inputs;
+          const result = await exec(`gh search code "${query}" --json path,repository,textMatches --limit 20`);
+          return { type: 'replace', output: JSON.parse(result) };
+        }
+        case 'mcp__github__list_issues': {
+          const { owner, repo, state } = ctx.inputs;
+          const result = await exec(`gh issue list --repo ${owner}/${repo} --state ${state || 'open'} --json number,title,state,labels`);
+          return { type: 'replace', output: JSON.parse(result) };
+        }
+      }
+      return { type: 'passthrough' };
+
+  # Replace Jira MCP with curl
+  - name: jira-curl
+    description: "Use curl for Jira reads (faster than MCP stdio roundtrip)"
+    tools:
+      - mcp__wiki__getJiraIssue
+      - mcp__wiki__searchJiraIssuesUsingJql
+    priority: 10
+    config:
+      base_url: "https://travel-cogroup.wiki.net"
+    handler: |
+      const auth = Buffer.from(`${process.env.JIRA_EMAIL}:${process.env.JIRA_TOKEN}`).toString('base64');
+      const headers = { 'Authorization': `Basic ${auth}`, 'Accept': 'application/json' };
+
+      if (ctx.tool === 'mcp__wiki__getJiraIssue') {
+        const result = await fetch(`${config.base_url}/rest/api/3/issue/${ctx.inputs.issueKey}`, { headers });
+        return { type: 'replace', output: await result.json() };
+      }
+      if (ctx.tool === 'mcp__wiki__searchJiraIssuesUsingJql') {
+        const jql = encodeURIComponent(ctx.inputs.jql);
+        const result = await fetch(`${config.base_url}/rest/api/3/search?jql=${jql}&maxResults=20`, { headers });
+        return { type: 'replace', output: await result.json() };
+      }
+      return { type: 'passthrough' };
+
+  # Replace SF MCP with sf CLI
+  - name: sf-cli
+    description: "Use sf CLI for Salesforce data queries"
+    tools:
+      - sf.dataQuery
+    priority: 10
+    config:
+      target_org: lodging-staging
+    handler: |
+      const query = ctx.inputs.query || ctx.inputs.soql;
+      const result = await exec(`sf data query --query "${query}" --target-org ${config.target_org} --json`);
+      return { type: 'replace', output: JSON.parse(result) };
+
+agents:
+  investigator:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Look up Jira issue $params.issue_key and find related code changes.
+      Then check the Salesforce config for any related custom metadata.
+    tools:
+      - mcp__wiki__getJiraIssue
+      - mcp__github__search_code
+      - mcp__github__list_commits
+      - sf.dataQuery
+    budget: 1.00
+    turns: 15
+
+# All tool calls go through CLI wrappers.
+# Agent experience: identical. Cost: lower (no MCP overhead). Speed: faster.

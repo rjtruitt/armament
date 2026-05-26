@@ -1,0 +1,25 @@
+/name code-review-pipeline
+/description Full CI-style review pipeline with gates and parallel checks
+/trigger manual
+/budget 10.00
+
+# Stage 1: Parallel static analysis
+/parallel
+  /spawn linter "Run static analysis on all src/ files. Report: unused imports, type errors, style violations that could cause bugs. File:line."
+  /spawn test-audit "Scan the test suite. Report: untested edge cases, missing test coverage for error paths, flaky test patterns. File:line."
+  /spawn security-scan "Scan for security issues: hardcoded secrets, SQL injection vectors, unsafe deserialization, command injection. File:line."
+/end
+
+/join linter test-audit security-scan
+
+# Stage 2: Synthesize with structured output
+/chain reviewer "Review all findings from linter, test-audit, and security-scan. Prioritize by severity."
+  /complete --purpose "Findings feed the fix pipeline" --sticky
+    /field critical string[] required "Must-fix before merge"
+    /field warnings string[] "Should fix this sprint"
+    /field info string[] "Nice to have improvements"
+
+# Stage 3: Approval gate — block on criticals
+/approve "All findings reviewed. Merge to main?"
+
+/log "Code review pipeline complete"

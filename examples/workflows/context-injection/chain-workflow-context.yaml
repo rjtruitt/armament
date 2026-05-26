@@ -1,0 +1,114 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: CHAIN WORKFLOW CONTEXT
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: Workflow B needs results from Workflow A. But you don't want B to
+#          re-run A's work. You also want B's agents to think they "participated"
+#          in the discovery so they have full context, not just raw data.
+#
+# Solution: Capture Workflow A's outputs and inject them as synthetic history
+#           into Workflow B's agents. The agent in B believes it "was there"
+#           during A's execution and has firsthand context.
+#
+# Variants:
+#   1. inject output only — just pass the final result as context
+#   2. inject conversation — pass the full chat history from A's agent
+#   3. inject synthetic summary — condense A's work into "I already did this"
+#   4. inject + continue — agent picks up where A's agent left off
+# ──────────────────────────────────────────────────────────────────────────────
+name: chain-workflow-context-pattern
+description: Second workflow picks up from first workflow's agent context
+
+trigger:
+  type: workflow_complete
+  workflow: two-phase-research
+
+params:
+  prior_workflow_id:
+    type: string
+    required: true
+    description: "Run ID of the workflow to chain from"
+  prior_agent:
+    type: string
+    default: "synthesizer"
+    description: "Which agent's context to pull"
+  new_task:
+    type: string
+    required: true
+
+agents:
+  # ── Variant 1: Simple output injection ──
+  continuation-simple:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: $params.new_task
+    inject:
+      # Pull just the output from the prior workflow's agent
+      - workflow:$params.prior_workflow_id.$params.prior_agent
+    budget: 1.00
+    turns: 15
+
+  # ── Variant 2: Full conversation replay ──
+  continuation-full-context:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: $params.new_task
+    # Replay the entire conversation from the prior agent
+    # Agent sees all the tool calls, reasoning, dead ends — full picture
+    inject_conversation: workflow:$params.prior_workflow_id.$params.prior_agent
+    budget: 1.00
+    turns: 15
+
+  # ── Variant 3: Synthetic summary (most token-efficient) ──
+  continuation-synthetic:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: $params.new_task
+    budget: 1.00
+    turns: 15
+
+    synthetic_history:
+      - role: user
+        content: |
+          You previously researched this topic in a prior session. Here's what
+          you found and the conclusions you reached:
+
+      - role: assistant
+        content: |
+          Yes, I remember that research. Here's my summary of what I found:
+
+          {{workflow:$params.prior_workflow_id.$params.prior_agent.output}}
+
+          Key conclusions I reached:
+          1. The system uses event-driven architecture (confirmed via code)
+          2. Documentation is outdated in 3 areas (identified specific pages)
+          3. There are 2 undocumented edge cases found in Slack discussions
+
+          I'm ready to continue from here. What's the next task?
+
+      - role: user
+        content: $params.new_task
+
+    # This variant is cheapest — compresses the full prior workflow into
+    # a few synthetic turns. Agent has the conclusions without the journey.
+
+  # ── Variant 4: Continue from checkpoint ──
+  continuation-checkpoint:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Continue from where you left off."
+    budget: 1.00
+    turns: 15
+
+    # Replay the ACTUAL conversation from the prior agent, then continue
+    # Agent literally picks up mid-conversation as if it never stopped
+    replay_from: workflow:$params.prior_workflow_id.$params.prior_agent
+    # ^ This loads the entire message history from that agent's session
+    #   and the new prompt becomes the next user message in that conversation.
+    #   Most expensive (tokens) but most context-rich.
+
+circuit_breaker:
+  max_total_budget: 5.00
+  max_total_turns: 60
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate

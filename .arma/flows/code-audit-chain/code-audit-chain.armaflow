@@ -1,0 +1,18 @@
+/name code-audit-chain
+/description Sequential deep-dive: bug-hunter finds issues, then perf-analyst reviews same files for perf, then synthesizer ranks everything. Each agent's output feeds into the next.
+/trigger manual
+/budget 6.00
+
+# Agent 1: Find bugs first
+/chain bug-hunter "Scan this project's src/ directories for logic bugs. Find: missing awaits on async calls, race conditions, off-by-one errors, unguarded null access, Map.get without nullish handling, event listener leaks, unclosed resources. Report each as: file:line, 3-5 line snippet, what breaks, the fix. Be thorough but only report confirmed issues."
+
+# Agent 2: Pipeline bug-hunter's output into perf-analyst (bug-hunter already ran, result reused)
+/chain bug-hunter -> perf-analyst
+
+# Agent 3: Collect both outputs and synthesize
+/spawn synthesizer
+/seed synthesizer user "You will receive findings from a bug-hunter and perf-analyst. Deduplicate, rank by severity, output max 15 items as: severity, file:line, snippet, what breaks, fix as code."
+/collect bug-hunter perf-analyst -> synthesizer
+
+/wait synthesizer complete
+/log "Chain audit complete — see #synthesizer"

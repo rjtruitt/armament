@@ -1,0 +1,88 @@
+{
+  "name": "armament",
+  "version": "0.1.0",
+  "description": "Multi-agent AI terminal with IRC-style channels and scriptable workflows",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./scripting": "./dist/scripting/index.js",
+    "./providers": "./dist/providers/index.js",
+    "./tui": "./dist/tui/index.js",
+    "./rendering": "./dist/rendering/index.js",
+    "./core": "./dist/core/index.js",
+    "./app": "./dist/app/index.js",
+    "./a2a": "./dist/a2a/index.js",
+    "./plugins": "./dist/plugins/index.js",
+    "./config": "./dist/config/index.js",
+    "./session": "./dist/session/index.js",
+    "./drift": "./dist/drift/index.js"
+  },
+  "bin": {
+    "arma": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "cli",
+    "ai-terminal",
+    "agent-loop",
+    "bbs",
+    "llm"
+  ],
+  "author": "Rob Truitt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rjtruitt/armament.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rjtruitt/armament/issues"
+  },
+  "homepage": "https://github.com/rjtruitt/armament#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ansi-escapes": "^7.3.0",
+    "chalk": "^5.6.2",
+    "cli-boxes": "^4.0.1",
+    "commander": "^14.0.3",
+    "eventemitter3": "^5.0.4",
+    "figures": "^6.1.0",
+    "flight-controller": "file:../flight-controller",
+    "gradient-string": "^3.0.0",
+    "inversify": "^8.1.0",
+    "iteratio": "file:../iteratio",
+    "iteratio-plugin-tools": "file:../iteratio-plugin-tools",
+    "open": "^11.0.0",
+    "p-retry": "^8.0.0",
+    "reflect-metadata": "^0.2.2",
+    "simple-git": "^3.36.0",
+    "slice-ansi": "^9.0.0",
+    "string-width": "^8.2.1",
+    "terminal-kit": "^3.1.2",
+    "wrap-ansi": "^10.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

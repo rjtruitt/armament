@@ -1,0 +1,186 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: MEMORY IMPLANT
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: You need agents to act on information from OTHER agents' sessions,
+#          user preferences from past conversations, or organizational knowledge
+#          that isn't in any document — but you don't want them to search for it.
+#
+# Solution: Implant "memories" — synthetic prior conversations where the agent
+#           "learned" the information firsthand. It will reference these
+#           "memories" naturally without needing to be told to.
+#
+# This is different from inject (which loads raw files). Memory implants make
+# the agent believe it personally experienced or discovered the information.
+# The behavioral difference is subtle but important:
+#   - inject: "Here's a document for reference" → agent may or may not use it
+#   - memory implant: "You already know this" → agent uses it automatically
+#
+# Use cases:
+#   - Cross-session knowledge transfer (what you learned yesterday)
+#   - Team decisions implanted into all agents (everyone "was in the meeting")
+#   - User preferences implanted (agent "knows" your coding style)
+#   - Error patterns implanted (agent "learned from past mistakes")
+# ──────────────────────────────────────────────────────────────────────────────
+name: memory-implant-pattern
+description: Agents with implanted "memories" of things they never actually did
+
+trigger:
+  type: manual
+
+params:
+  task:
+    type: string
+    required: true
+  user_preferences:
+    type: string
+    description: "User's known preferences to implant"
+
+agents:
+  # ── Agent with implanted user preferences ──
+  personalized-assistant:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: $params.task
+    tools: [read_file, edit_file, grep]
+    budget: 1.00
+    turns: 15
+
+    synthetic_history:
+      # Implant: "I've worked with this user before"
+      - role: user
+        content: "Hey, I need help with some code."
+
+      - role: assistant
+        content: |
+          Good to work with you again. From our previous sessions I remember:
+          - You prefer TypeScript with strict mode
+          - You like small, focused functions (max ~20 lines)
+          - You hate comments that explain "what" — only "why" if non-obvious
+          - You use Vitest for testing, AAA pattern
+          - Error handling: fail fast, let it crash, don't swallow errors
+          - You prefer explicit over clever (no reduce() chains, just for loops)
+          - Named exports only, no default exports
+          - Interface over type for object shapes
+          - You're on Node 20, can use all modern syntax
+
+          What do you need today?
+
+      - role: user
+        content: "You remembered! Yeah, all that still applies."
+
+      - role: assistant
+        content: "Great. What's the task?"
+
+      - role: user
+        content: $params.task
+
+    # Agent now writes code matching these preferences WITHOUT being told.
+    # It "remembers" working with this user before. Much more natural than
+    # cramming style preferences into a system prompt.
+
+
+  # ── Agent with implanted organizational knowledge ──
+  org-aware-agent:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: $params.task
+    tools: [read_file, grep, mcp__kb__search]
+    budget: 1.00
+    turns: 15
+
+    synthetic_history:
+      - role: user
+        content: "What do you know about our team's setup?"
+
+      - role: assistant
+        content: |
+          From working with your team, here's what I've gathered:
+
+          **Team structure:**
+          - 6 engineers, 1 PM, 1 designer
+          - Alice leads backend, Bob leads frontend, Charlie does infra
+          - Stand-ups at 10 AM PT, sprint planning Mondays
+          - Deploy Tuesdays and Thursdays (merge freeze day-of)
+
+          **Tech decisions I've been part of:**
+          - Moved from REST to GraphQL for the mobile app (Jan 2026)
+          - Chose Kafka over SQS for event bus (more complex but needed fan-out)
+          - Using feature flags via LaunchDarkly for all new features
+          - Adopted trunk-based development, no long-lived branches
+
+          **Known pain points:**
+          - The booking service has 3 years of tech debt nobody wants to touch
+          - CI takes 45 minutes (Alice is working on parallelizing it)
+          - The pricing engine has zero documentation (tribal knowledge in Slack only)
+
+          **Conventions I should follow:**
+          - PRs need 2 approvals (1 must be from the relevant lead)
+          - All new services get a README, ADR, and runbook on day 1
+          - Slack #decisions channel is the source of truth for arch decisions
+
+      - role: user
+        content: "Spot on. Keep all that in mind for today's work."
+
+      - role: assistant
+        content: "Will do. Ready for the task."
+
+      - role: user
+        content: $params.task
+
+    # Agent makes decisions aligned with org context: won't suggest SQS,
+    # knows to check with Alice about CI changes, respects merge freeze, etc.
+
+
+  # ── Agent with implanted "lessons learned" ──
+  battle-tested-agent:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: $params.task
+    tools: [read_file, edit_file, grep]
+    budget: 1.00
+    turns: 15
+
+    synthetic_history:
+      - role: user
+        content: "Remember the mistakes from last time?"
+
+      - role: assistant
+        content: |
+          Yes, I made several errors in previous sessions that I won't repeat:
+
+          **Mistake 1:** I changed a database migration without checking if it was
+          already applied in production. The rollback broke staging for 4 hours.
+          **Lesson:** ALWAYS check migration status before modifying. Ask first.
+
+          **Mistake 2:** I used `git push --force` to fix a rebase and overwrote
+          Bob's commits on the shared branch.
+          **Lesson:** NEVER force push to shared branches. Use `--force-with-lease` at minimum, and confirm with the user before any force push.
+
+          **Mistake 3:** I updated a shared utility function signature without checking
+          all callers. 12 files broke.
+          **Lesson:** Before modifying any function signature, `grep` for all callers first. Update them all or don't change the signature.
+
+          **Mistake 4:** I suggested adding a new dependency for something achievable
+          with 10 lines of code. The package had a CVE discovered a week later.
+          **Lesson:** Prefer standard library and existing deps. Only add new deps
+          if the complexity saved is substantial.
+
+          I've learned from all of these. I'll be more careful.
+
+      - role: user
+        content: "Good. Don't repeat them. Here's today's task:"
+
+      - role: user
+        content: $params.task
+
+    # This agent is pre-calibrated to be cautious about the specific mistakes
+    # that matter. It's not generically careful — it's specifically careful about
+    # force pushes, migration states, caller checks, and unnecessary deps.
+    # Like an engineer who got burned and learned.
+
+circuit_breaker:
+  max_total_budget: 4.00
+  max_total_turns: 50
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate

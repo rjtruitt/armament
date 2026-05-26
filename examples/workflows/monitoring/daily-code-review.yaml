@@ -1,0 +1,81 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Daily Code Review — reviews all PRs merged yesterday, sends team digest
+# ──────────────────────────────────────────────────────────────────────────────
+name: daily-code-review
+description: End-of-day review of all merged PRs with pattern detection
+version: "1.0.0"
+
+trigger:
+  type: cron
+  cron: "0 18 * * 1-5"  # 6 PM weekdays
+
+params:
+  repo:
+    type: string
+    required: true
+  digest_channel:
+    type: string
+    default: "#code-review-digest"
+
+agents:
+  pr-collector:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Collect all PRs merged today in $params.repo.
+      For each: title, author, files changed count, additions/deletions, labels.
+    tools: [mcp__github__list_pull_requests, mcp__github__pull_request_read]
+    toolset: github
+    output: merged_prs
+    budget: 0.10
+    turns: 8
+
+  pattern-detector:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [pr-collector]
+    prompt: |
+      Analyze today's merged PRs for patterns:
+      - Are multiple PRs touching the same files? (merge conflict risk tomorrow)
+      - Any unusually large PRs? (review quality concern)
+      - PRs merged without approvals? (process bypass)
+      - New dependencies added? (supply chain awareness)
+      - Recurring patterns across PRs (emerging tech debt?)
+      - Any security-sensitive changes? (auth, crypto, permissions)
+
+      Be concise. Only flag things worth the team's attention.
+    inject:
+      - workflow:daily-code-review.pr-collector
+    output: patterns
+    budget: 0.30
+    turns: 5
+
+  digest-writer:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    depends_on: [pattern-detector]
+    prompt: |
+      Write a team digest for $params.digest_channel:
+
+      **Today's Merges:** (count, total lines changed)
+      **Notable PRs:** (1-3 that are interesting/impactful)
+      **Patterns Detected:** (from analysis)
+      **Action Items:** (if any)
+
+      Keep it under 20 lines. Make it scannable.
+    inject:
+      - workflow:daily-code-review.pr-collector
+      - workflow:daily-code-review.pattern-detector
+    output: digest
+    budget: 0.10
+    turns: 3
+
+circuit_breaker:
+  max_total_budget: 0.75
+  max_total_turns: 20
+  stuck_detection:
+    consecutive_identical_calls: 2
+    action: terminate
+
+meta:
+  tags: [monitoring, daily, code-review, github]

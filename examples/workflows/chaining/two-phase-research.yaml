@@ -1,0 +1,78 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Two-Phase Research — first workflow does broad research, second does deep dive
+# Demonstrates workflow chaining: second workflow pulls context from first
+# ──────────────────────────────────────────────────────────────────────────────
+name: two-phase-research
+description: "Phase 1: broad survey. Chains into phase 2: deep dive on findings."
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+params:
+  topic:
+    type: string
+    required: true
+  depth:
+    type: string
+    default: "thorough"
+    description: "broad | thorough | exhaustive"
+
+agents:
+  broad-scanner:
+    provider: bedrock
+    model: us.anthropic.claude-sonnet-4-6-v1
+    prompt: |
+      Broad survey on: $params.topic
+
+      Search across all available sources ([KB], wiki, code).
+      Don't go deep — identify the TOP 5 areas that need deeper investigation.
+      For each area, note: what we know, what's unclear, where to dig.
+
+      Output structured JSON:
+      { "areas": [{ "name": "", "known": "", "unclear": "", "sources": [] }] }
+    tools: [mcp__kb__search, mcp__kb__chat, mcp__wiki__searchwikiUsingCql]
+    output: survey
+    budget: 0.50
+    turns: 15
+
+  prioritizer:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [broad-scanner]
+    prompt: |
+      Given the survey results, rank the 5 areas by:
+      1. Business impact (what matters most?)
+      2. Knowledge gap (where are we most ignorant?)
+      3. Feasibility (can we actually find answers?)
+
+      Pick the top 3 for deep dive. Output their names and why.
+    inject:
+      - workflow:two-phase-research.broad-scanner
+    output: priorities
+    budget: 0.10
+    turns: 3
+
+outputs:
+  survey_results:
+    from: broad-scanner
+    format: json
+  priorities:
+    from: prioritizer
+    format: json
+    save_to: ".arma/outputs/research-phase1-$params.topic.json"
+
+# This workflow's completion triggers the deep-dive workflow
+hooks:
+  on_complete: |
+    /run workflows/chaining/deep-dive.yaml --topic "$params.topic" --areas "$priorities.top_areas" --prior_context "workflow:two-phase-research"
+
+circuit_breaker:
+  max_total_budget: 1.00
+  max_total_turns: 25
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate
+
+meta:
+  tags: [research, chaining, phase-1]

@@ -1,0 +1,51 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# CONTEXT INJECTION & SYNTHETIC HISTORY
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# WHY LIE TO THE LLM?
+# ────────────────────
+# LLMs are stateless. They have no memory between calls. They only know what's
+# in the context window. This means WE control their entire reality.
+#
+# By injecting synthetic "prior conversation" into context, we can:
+#
+# 1. SKIP WARMUP — Make the agent think it already figured out the boring parts.
+#    Real turns cost tokens and time. If the answer is deterministic, just tell
+#    it the answer already happened.
+#
+# 2. ENFORCE BEHAVIOR — An agent that "already followed" a checklist will
+#    continue following it. One that "already used" a specific format will
+#    keep using it. Momentum is real in LLM behavior.
+#
+# 3. CORRAL AGENTS — Multiple agents with the same "memory" of past decisions
+#    will make consistent decisions. No drift, no contradictions.
+#
+# 4. MOCK EXPENSIVE OPERATIONS — Why burn API calls to "discover" your repo
+#    structure when you can just inject the structure as if it already ran?
+#
+# 5. SET TONE AND STYLE — An agent that "already wrote" two paragraphs in a
+#    specific voice will continue in that voice better than any system prompt.
+#
+# 6. CREATE CHECKPOINTS — Save expensive work as synthetic context. If wave 3
+#    fails, restart from the synthetic context of wave 2 without re-running.
+#
+# THE KEY INSIGHT:
+# ────────────────
+# The LLM doesn't know (or care) if a conversation actually happened.
+# A fabricated assistant message in the history is indistinguishable from a
+# real one. We exploit this to:
+#   - Reduce token waste
+#   - Guarantee deterministic starting conditions
+#   - Chain workflows without re-discovery
+#   - Enforce exact compliance with templates and formats
+#
+# FORMATS:
+# ────────
+# synthetic_history: pre-fabricated conversation turns injected as context
+# inject: real files/context loaded into the system or user message
+# mock_tools: fabricated tool call results the agent "already received"
+# mock_todo: pre-filled todo/task state the agent thinks it created
+#
+# ══════════════════════════════════════════════════════════════════════════════
+name: context-injection-index
+description: "Index file explaining context injection patterns. See sibling files for examples."

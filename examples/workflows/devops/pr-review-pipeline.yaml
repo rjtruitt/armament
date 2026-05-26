@@ -1,0 +1,142 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# PR Review Pipeline — triggered on new PRs, runs multi-pass review
+# ──────────────────────────────────────────────────────────────────────────────
+name: pr-review-pipeline
+description: Automated multi-pass PR review with security, perf, and style checks
+version: "1.0.0"
+
+trigger:
+  type: webhook
+  webhook: /hooks/github/pr
+
+params:
+  repo:
+    type: string
+    required: true
+  pr_number:
+    type: number
+    required: true
+  base_branch:
+    type: string
+    default: "main"
+
+agents:
+  diff-fetcher:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    prompt: |
+      Fetch the full diff and file list for PR #$params.pr_number in $params.repo.
+      Get the PR description, linked issues, and commit messages.
+      Output structured data: files changed, additions, deletions, PR context.
+    tools: [mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__list_commits]
+    output: pr_data
+    budget: 0.10
+    turns: 10
+    timeout: 30000
+
+  security-reviewer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [diff-fetcher]
+    prompt: |
+      Security review this PR. Check for:
+      - SQL injection, XSS, command injection
+      - Hardcoded secrets, API keys, passwords
+      - Auth/authz bypasses
+      - Insecure deserialization
+      - Path traversal
+      - SSRF opportunities
+      - Dependency vulnerabilities (new packages)
+
+      Rate: PASS, WARN, or BLOCK with specific line references.
+    inject:
+      - workflow:pr-review-pipeline.diff-fetcher
+    output: security_review
+    budget: 0.30
+    turns: 5
+    timeout: 60000
+
+  perf-reviewer:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    depends_on: [diff-fetcher]
+    prompt: |
+      Performance review this PR. Check for:
+      - N+1 queries
+      - Missing indexes on new DB queries
+      - Unbounded loops or recursion
+      - Large payload concerns
+      - Missing pagination
+      - Memory leaks (unclosed streams, event listeners)
+      - Blocking I/O in async paths
+
+      Rate: PASS, WARN, or CONCERN with specific suggestions.
+    inject:
+      - workflow:pr-review-pipeline.diff-fetcher
+    output: perf_review
+    budget: 0.30
+    turns: 5
+    timeout: 60000
+
+  style-reviewer:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [diff-fetcher]
+    prompt: |
+      Light style review. Only flag:
+      - Inconsistency with surrounding code patterns
+      - Misleading names
+      - Dead code introduced
+      - Missing error handling at boundaries
+
+      Don't nitpick formatting (linters handle that). Keep it to top 3 issues max.
+    inject:
+      - workflow:pr-review-pipeline.diff-fetcher
+    output: style_review
+    budget: 0.10
+    turns: 5
+    timeout: 30000
+
+  comment-poster:
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001
+    depends_on: [security-reviewer, perf-reviewer, style-reviewer]
+    prompt: |
+      Compile all review feedback into a single PR comment.
+      Format as a clear review with sections:
+      - 🔒 Security
+      - ⚡ Performance
+      - 🎨 Style
+
+      Only include sections that have findings.
+      If all PASS, leave a short approval comment.
+      Post as a PR review comment on $params.repo PR #$params.pr_number.
+    tools: [mcp__github__add_issue_comment]
+    inject:
+      - workflow:pr-review-pipeline.security-reviewer
+      - workflow:pr-review-pipeline.perf-reviewer
+      - workflow:pr-review-pipeline.style-reviewer
+    output: comment_posted
+    budget: 0.10
+    turns: 3
+    timeout: 30000
+    on_failure: skip
+
+waves:
+  - name: "fetch"
+    agents: [diff-fetcher]
+  - name: "review"
+    agents: [security-reviewer, perf-reviewer, style-reviewer]
+    parallel: true
+  - name: "post"
+    agents: [comment-poster]
+
+circuit_breaker:
+  max_total_budget: 1.00
+  max_total_turns: 40
+  stuck_detection:
+    consecutive_identical_calls: 2
+    action: terminate
+
+meta:
+  tags: [devops, github, pr-review, automated]

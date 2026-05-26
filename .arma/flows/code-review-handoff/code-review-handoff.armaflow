@@ -1,0 +1,17 @@
+/name code-review-handoff
+/description Reviewer analyzes code, structured output feeds directly to fixer agent
+
+# Step 1: Reviewer scans for issues with structured completion
+/chain reviewer "Scan src/ for code quality issues: unused variables, missing error handling, inconsistent naming, potential bugs."
+  /complete --purpose "Structured findings get delivered to the fixer as a task brief"
+    /field issues string[] required "Each code issue: file:line description"
+    /field priority enum(critical,high,medium,low) required "Highest priority issue level found"
+    /field files_affected string[] required "List of file paths that need changes"
+    /field suggested_approach string "High-level strategy for fixing these issues"
+
+# Step 2: Fixer receives the structured review directly (no script, JSON passthrough)
+/chain reviewer -> fixer
+
+/log "Code review handoff complete — fixer is working on the issues"
+/wait fixer complete
+/log "All fixes applied — see #fixer"

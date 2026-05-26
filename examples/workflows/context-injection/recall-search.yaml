@@ -1,0 +1,113 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: RECALL & SEARCH ACROSS SESSIONS
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: You had a conversation 3 days ago where you figured out how the
+#          auth system works. Now you need that knowledge again but don't want
+#          to re-research. Or: a workflow needs context from a random past chat.
+#
+# Solution: The `recall` directive searches all persisted sessions by term,
+#           channel name, or agent name. Returns ±N turns of context around
+#           matches. Can be injected as raw context or as synthetic history.
+#
+# This is the "search my chats" feature — like Claude web's conversation search
+# but automated and usable by workflows.
+# ──────────────────────────────────────────────────────────────────────────────
+name: recall-search-pattern
+description: Pull context from prior sessions into current agents
+
+trigger:
+  type: manual
+
+params:
+  current_task:
+    type: string
+    required: true
+  search_terms:
+    type: array
+    description: "Terms to search across all sessions"
+  channels_to_search:
+    type: array
+    description: "Specific channels to pull from"
+
+agents:
+  context-aware-worker:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: $params.current_task
+    tools: [read_file, edit_file, grep]
+    budget: 1.00
+    turns: 15
+
+    # Recall pulls matching turns from past sessions into context
+    recall:
+      # Search by term — greps all session chatMessages for matches
+      - search: "auth middleware"
+        context_turns: 5          # ±5 turns around each match
+        max_results: 3            # top 3 matches by relevance
+        inject_as: synthetic      # inject as "you previously discussed this"
+
+      # Search by channel name — pull last N turns from a specific channel
+      - channel: "auth-research"
+        last_turns: 20            # last 20 turns of that channel
+        inject_as: context        # inject as reference material
+
+      # Search by term across specific channels only
+      - search: "JWT rotation"
+        channels: ["backend-dev", "security-review"]
+        context_turns: 3
+        inject_as: synthetic
+
+    # When inject_as: synthetic, the recall results become:
+    #   role: assistant
+    #   content: "I recall from a previous session: [matched content]"
+    #
+    # When inject_as: context, they become part of the user message:
+    #   role: user
+    #   content: "Here's relevant context from prior sessions: [content]"
+
+
+  # ── Cross-session knowledge transfer ──
+  knowledge-transfer-agent:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Continue the research from the prior session."
+    budget: 1.00
+    turns: 15
+
+    recall:
+      # Pull entire conversation from a named channel
+      - channel: "pricing-investigation"
+        all: true                  # everything, not just last N
+        inject_as: replay          # replay as if this IS that conversation continuing
+
+    # With inject_as: replay, the agent literally continues the old conversation.
+    # Its next response will be in the same voice, with the same context, as if
+    # the session never ended. Most expensive but most seamless continuation.
+
+
+  # ── Workflow-to-workflow context transfer ──
+  workflow-continuation:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: "Pick up from where the previous workflow left off."
+    budget: 1.00
+    turns: 15
+
+    recall:
+      # Pull from a specific workflow run's agent
+      - workflow_run: "wiki-doc-gen-20260518-143022"
+        agent: "synthesizer"
+        inject_as: synthetic
+
+      # Pull from the MOST RECENT run of a workflow
+      - workflow: "wiki-doc-gen"
+        latest: true
+        agent: "code-researcher"
+        inject_as: context
+
+circuit_breaker:
+  max_total_budget: 4.00
+  max_total_turns: 50
+  stuck_detection:
+    consecutive_identical_calls: 3
+    action: terminate

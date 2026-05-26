@@ -1,0 +1,144 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern: CONDITIONAL BYPASS
+# ──────────────────────────────────────────────────────────────────────────────
+# Problem: Sometimes you want to block or redirect tool calls based on
+#          external conditions — time of day, environment, feature flags,
+#          or the state of other systems.
+#
+# Solution: Wrappers with conditions that dynamically decide whether to
+#           intercept, redirect, or block.
+#
+# Examples:
+#   - Block writes during deploy freeze
+#   - Redirect to staging during testing hours
+#   - Block expensive operations when budget is low
+#   - Route to different APIs based on region
+#   - Enforce read-only mode for specific agents
+# ──────────────────────────────────────────────────────────────────────────────
+name: conditional-bypass-demo
+description: Dynamically block or redirect tool calls based on conditions
+
+trigger:
+  type: manual
+
+wrappers:
+  # Block writes during deploy freeze
+  - name: deploy-freeze
+    description: "Block all write operations during merge freeze windows"
+    tools:
+      - "*create*"
+      - "*update*"
+      - "*delete*"
+      - "*push*"
+      - "*merge*"
+    priority: 1
+    condition: |
+      // Merge freeze: Tuesdays and Thursdays (deploy days)
+      const day = new Date().getDay();
+      const hour = new Date().getHours();
+      // Freeze from 6 AM to 6 PM on deploy days
+      return (day === 2 || day === 4) && hour >= 6 && hour < 18;
+    handler: |
+      return {
+        type: 'error',
+        message: `Write operation blocked: merge freeze active (deploy day). Tool: ${ctx.tool}. Try again after 6 PM or on a non-deploy day.`
+      };
+
+  # Redirect to staging during dev hours
+  - name: staging-redirect
+    description: "Route Salesforce queries to staging org during dev hours"
+    tools:
+      - sf.dataQuery
+    priority: 10
+    condition: |
+      // If it's a weekday between 9 AM and 5 PM, we're probably testing
+      const hour = new Date().getHours();
+      const day = new Date().getDay();
+      return day >= 1 && day <= 5 && hour >= 9 && hour < 17;
+    handler: |
+      // Force target-org to staging during business hours
+      return {
+        type: 'transform_input',
+        inputs: { ...ctx.inputs, targetOrg: 'lodging-staging' }
+      };
+
+  # Budget guardian — block expensive operations when budget is low
+  - name: budget-guardian
+    description: "Block non-essential tool calls when run budget is nearly exhausted"
+    tools:
+      - mcp__kb__chat  # expensive (LLM behind it)
+      - mcp__kb__search
+    priority: 1
+    condition: |
+      // Only activate when we've used >80% of budget
+      const budgetUsed = ctx.metadata?.budgetUsed || 0;
+      const budgetTotal = ctx.metadata?.budgetTotal || 5.0;
+      return budgetUsed / budgetTotal > 0.8;
+    handler: |
+      return {
+        type: 'error',
+        message: `Budget guardian: ${Math.round((ctx.metadata.budgetUsed / ctx.metadata.budgetTotal) * 100)}% of budget used. Non-essential search blocked. Finish with existing findings.`
+      };
+
+  # Read-only mode for specific agents
+  - name: agent-readonly
+    description: "Ensure hallucination-checker agents can only read, never write"
+    tools:
+      - "*create*"
+      - "*update*"
+      - "*push*"
+      - "*delete*"
+    priority: 1
+    condition: |
+      // Only block if this is a verifier/checker agent
+      const agentName = ctx.metadata?.agentName || '';
+      return agentName.includes('checker') || agentName.includes('verifier');
+    handler: |
+      return {
+        type: 'error',
+        message: `Agent "${ctx.metadata.agentName}" is read-only. Write operation "${ctx.tool}" blocked.`
+      };
+
+  # Feature flag — enable/disable specific integrations
+  - name: feature-gate
+    description: "Gate [KB] access behind a feature flag"
+    tools:
+      - "mcp__[KB]_default__*"
+    priority: 1
+    condition: |
+      // Check if [KB] integration is enabled (env var or config)
+      return process.env.KB_ENABLED !== 'true';
+    handler: |
+      return {
+        type: 'replace',
+        output: {
+          results: [],
+          _note: '[KB] integration disabled (KB_ENABLED != true). Skipped.',
+          _featureFlag: 'KB_ENABLED'
+        }
+      };
+
+agents:
+  worker:
+    provider: anthropic
+    model: claude-sonnet-4-6-20250514
+    prompt: |
+      Research and document the current system state.
+      Search for information, read code, and compile findings.
+    tools:
+      - mcp__github__get_file_contents
+      - mcp__github__push_files
+      - mcp__kb__search
+      - mcp__wiki__createwikiPage
+      - sf.dataQuery
+    budget: 3.00
+    turns: 30
+
+# The agent has full tool access in its config, but wrappers enforce:
+# - No writes during deploy freeze
+# - SF queries hit staging during work hours
+# - Budget guardian cuts off expensive searches at 80% spend
+# - If this were a verifier agent, all writes would be blocked
+# - [KB] is gated behind env var
+#
+# Agent code stays simple. Policy lives in the wrapper layer.

@@ -1,0 +1,22 @@
+/name agent-queue-test
+/description Queue test: dispatcher creates 5 tasks, 3 workers compete — tests TaskStore queuing
+/trigger manual
+/budget 5.00
+/timeout 600000
+
+/spawn dispatcher "Create 5 tasks using create_task: Audit-AccountService, Audit-OpptyHelper, Audit-TriggerChain, Audit-EmailHandler, Audit-DataService. Use list_tasks to verify all 5 pending. Write .workspace/queue-status.json. Call report_complete with task IDs and subjects. DO NOT claim or complete any tasks."
+/wait dispatcher complete
+/log "Dispatcher created 5 tasks"
+
+/parallel
+  /spawn worker-1 "Use list_tasks to find pending tasks. Use claim_task to claim one (owner=worker-1). Write a 2-line summary file in .workspace/. Use complete_task to mark it done. Repeat until no pending tasks. Write .workspace/worker-1-done.md. Call report_complete."
+  /spawn worker-2 "Use list_tasks to find pending tasks. Use claim_task to claim one (owner=worker-2). Write a 2-line summary file in .workspace/. Use complete_task to mark it done. Repeat until no pending tasks. Write .workspace/worker-2-done.md. Call report_complete."
+  /spawn worker-3 "Use list_tasks to find pending tasks. Use claim_task to claim one (owner=worker-3). Write a 2-line summary file in .workspace/. Use complete_task to mark it done. Repeat until no pending tasks. Write .workspace/worker-3-done.md. Call report_complete."
+/end
+
+/join worker-1 worker-2 worker-3
+/log "All 3 workers completed"
+
+/spawn auditor "Use list_tasks to verify ALL 5 tasks are completed. Read worker summary files in .workspace/. Write .workspace/queue-audit.md with which worker did which task. Call report_complete with audit results."
+/wait auditor complete
+/log "Queue test complete — see .workspace/queue-audit.md"
