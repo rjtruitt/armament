@@ -1,90 +1,76 @@
 # Drift System
 
-Git-worktree-based channel isolation. Each channel gets its own git worktree so agents can modify files independently without conflicting. The drift system tracks changes, detects co-drifting (multiple channels editing same files), and provides merge/sync tooling.
+Content-addressed file snapshot archive. Every `write_file`, `edit_file`, and `append_file` tool call auto-snapshots the file before modification. Snapshots are stored globally in `~/.arma/drift/` and tagged by channel for per-channel rollback.
+
+No git worktrees. No branches. Just file-level snapshots with content-deduplication via SHA256 hashing.
 
 ## Architecture
 
 ```
-ChannelLifecycle.joinChannel()
-    → DriftManager.createWorktree()     ← NEEDS WIRING
-    → git worktree add -b drift/<slug>
+Tool call (write_file / edit_file / append_file)
+    → DriftManager.snapshot(channel, path, reason, tool)
+    → reads current file content
+    → SHA256 hashes it
+    → stores bytes in ~/.arma/drift/content/<sha256hex>
+    → appends entry to ~/.arma/drift/index.json
 
-Agent turn completes
-    → DriftManager.recordActivity()     ← NEEDS WIRING
-    → DriftManager.snapshot()           ← optional, configured
-
-ChannelLifecycle.leaveChannel()
-    → DriftManager.destroyWorktree()    ← WIRED
-    → git worktree remove --force
+User requests rollback
+    → DriftManager.rollback(snapshotId)
+    → reads stored content from ~/.arma/drift/content/<hash>
+    → writes it back to original path
+    → snapshots the restored state (rollback is tracked too)
 ```
 
-## Worktree layout
+## Storage layout
 
 ```
-.armament/worktrees/
-  channel-name/         ← git worktree (agent's sandboxed repo)
-  another-channel/
-  ...
+~/.arma/drift/
+    index.json     ← { version, counter, files: { "/path": [ { id, channel, hash, reason, tool, ts, size } ] } }
+    content/
+        <sha256hex>  ← raw file bytes (deduplicated by hash)
 ```
-
-Each worktree is on a branch `drift/<channel-slug>` with its own working directory.
 
 ## Key types
 
 | Type | Description |
 |------|-------------|
-| `IDriftStats` | Per-channel stats: commits ahead, velocity, sync status, co-drifts, files modified |
-| `IDriftConfig` | `enabled`, `inactivityDays` (7), `autoRebaseThreshold` (10), `snapshotOnTurnComplete` (false), `mergePreviewOnComplete` (true) |
-| `IDriftMergePreview` | Fast-forward possible? Conflict files? Lines added/removed |
-| `SyncStatus` | `clean`, `stale`, `conflict`, `diverged` |
+| `DriftEntry` | Single snapshot: id, channel, hash, reason, tool ('edit_file'|'write_file'|'append_file'|'manual'|'rollback'), timestamp, size |
+| `DriftStoreStats` | totalSnapshots, totalPaths, totalSizeBytes, paths[] |
+| `IDriftConfig` | enabled, retentionDays, maxSizeBytes, autoPruneStaleOnStart |
 
 ## DriftManager API
 
 | Method | Purpose |
 |--------|---------|
-| `createWorktree(channel, repoPath)` | Creates git worktree + drift branch for a channel |
-| `destroyWorktree(channel)` | Removes worktree + branch, cleans up |
-| `getStats(channel)` | Returns drift stats for a channel |
-| `getAllStats()` | Returns stats for all active worktrees |
-| `getDriftMap()` | Map of file → channels that modified it (co-drift detection) |
-| `snapshot(channel, label?)` | `git add -A` + commit in the worktree |
-| `mergePreview(channel)` | Shows what a merge would look like |
-| `autoMerge(channel)` | Attempts merge, returns conflicts if any |
-| `checkRebaseNeeded(channel)` | Checks if worktree is behind main |
-| `cleanOrphans(knownChannels)` | Removes worktrees for channels that no longer exist |
-| `recordActivity(channel)` | Updates lastActivity timestamp |
+| `snapshot(channel, path, reason, tool)` | Save a snapshot before a file change |
+| `listSnapshots(channel, path?)` | List snapshots, optionally filtered |
+| `rollback(channel, snapshotId)` | Restore file to a previous snapshot |
+| `getStats(channel)` | Get snapshot count, size, paths |
+| `prune({ days?, staleOnly?, maxSizeBytes? })` | Remove old/stale snapshots, enforce size cap |
 
-## Co-drift detection
+## Agent-facing tools (from DriftTools.ts)
 
-When two channels modify the same files, they're "co-drifting":
-- **Low risk**: 1-2 shared files
-- **Medium risk**: 3-5 shared files
-- **High risk**: >5 shared files
+| Tool | Description |
+|------|-------------|
+| `drift_snapshot` | Manual snapshot: `{"path": "/abs/path", "reason": "why"}` |
+| `drift_snapshots` | List snapshots: `{"path": "optional/filter.md"}` |
+| `drift_rollback` | Rollback: `{"id": "s_3"}` |
+| `drift_status` | Show stats: count, total size, tracked files |
+| `drift_prune` | Clean up: `{"days": 30}` or `{"staleOnly": true}` |
 
-The drift map shows which files are being modified by which channels so you can spot conflicts before merging.
+## Auto-snapshots
 
-## Config
+The following tool calls auto-snapshot the target file **before** modification:
 
-```json
-{
-  "drift": {
-    "enabled": true,
-    "inactivityDays": 7,
-    "autoRebaseThreshold": 10,
-    "snapshotOnTurnComplete": false,
-    "mergePreviewOnComplete": true,
-    "worktreeBaseDir": ".armament/worktrees"
-  }
-}
-```
+- `write_file` — snapshots old content, writes new
+- `edit_file` — snapshots old content, applies edit
+- `append_file` — snapshots old content, appends
 
-## States needing wiring
+This means every file change is recoverable. Snapshots are never modified or deleted by normal operations — only by explicit `drift_prune` or the size-based auto-prune when `maxSizeBytes` is configured.
 
-| Hook | Where | Status |
-|------|-------|--------|
-| `createWorktree` on channel join | `ChannelLifecycle.joinChannel()` | Not wired |
-| `recordActivity` on turn start | Agent turn lifecycle | Not wired |
-| `snapshot` on turn complete | Agent turn lifecycle | Not wired |
-| `mergePreview` on turn complete | Agent turn lifecycle | Not wired |
-| `checkRebaseNeeded` display | TUI status / web card | Not wired |
-| `getDriftMap` / co-drift display | TUI / web card | Not wired |
+## Storage
+
+- Content is deduplicated by SHA256 hash — same file content = single copy
+- Index is stored as JSON in `~/.arma/drift/index.json`
+- Content directory: `~/.arma/drift/content/`
+- All operations use atomic writes (write to `.tmp.<pid>`, rename to target) to prevent corruption
