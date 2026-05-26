@@ -1,5 +1,7 @@
 # Getting Started with Armament
 
+> See [README.md](../README.md) for a quick overview and architecture summary.
+
 This guide will walk you through installing and configuring Armament for the first time.
 
 ## Prerequisites
@@ -52,6 +54,23 @@ npm run build
 ```
 
 If `npm install` in armament fails with "Cannot find module" errors, the sibling directories (`../iteratio`, `../flight-controller`, `../iteratio-plugin-tools`) are missing or not built yet. Run the build steps above.
+
+### Make a Portable Binary
+
+After building, create a standalone `arma` binary you can run from anywhere:
+
+```bash
+# Build the portable launcher
+make binary
+
+# Link it to your PATH
+ln -sf "$(pwd)/armament" ~/.local/bin/arma
+
+# Or just run it from the repo
+./armament
+```
+
+Now you can type `arma` from any directory.
 
 ### Option 2: npm Installation (Coming Soon)
 
