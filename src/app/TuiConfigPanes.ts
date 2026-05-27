@@ -463,6 +463,7 @@ export class TuiConfigPanes {
       'session.streaming.value': 'session.streaming',
       'session.autoSave.value': 'session.autoSave',
       'session.showThinkingInBuffer.value': 'session.showThinkingInBuffer',
+      'session.showThinkingOverlay.value': 'session.showThinkingOverlay',
       'session.promptCaching.value': 'session.promptCaching',
       'session.maxTurns.value': 'session.maxTurns',
       'session.timeout.value': 'session.conversationTimeout',
@@ -524,6 +525,10 @@ export class TuiConfigPanes {
     }
     if (cfgPath === 'session.showThinkingInBuffer') {
       this.opts.showThinkingInBuffer = typeof value === 'boolean' ? value : value === 'on';
+      this.delegate.render();
+    }
+    if (cfgPath === 'session.showThinkingOverlay') {
+      this.opts.showThinkingOverlay = typeof value === 'boolean' ? value : value === 'on';
       this.delegate.render();
     }
     if (cfgPath === 'display.renderInterval') {

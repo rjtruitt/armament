@@ -488,7 +488,7 @@ export class ArmamentApp extends ReplPublicAPI {
     return this._sessionState.calculateCost(model, inputTokens, outputTokens, cacheRead, cacheWrite);
   }
 
-  private _persistChannelState(channelName: string): void { this._channelLifecycle.persistChannelState(channelName); }
+  private _persistChannelState(channelName: string): void { this._channelLifecycle.persistChannelState(channelName, true); }
 
   private async _resumeChannel(
     entry: import('../session/interfaces/ISessionPersistence.js').IChannelManifestEntry,

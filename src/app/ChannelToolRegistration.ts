@@ -265,7 +265,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     onTurnComplete: (_turnNumber: number, _response: string) => {
       deps.callbacks.stopThinking();
       deps.callbacks.updateAgentStatus(chName, 'idle');
-      ctx.persistChannelState(chName);
+      // State file write happens in onPostStream (only when threshold hit) + on shutdown
     },
     onToolCall: (toolName: string, args: unknown) => {
       deps.callbacks.stopThinking();
@@ -322,13 +322,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
           deps.callbacks.writeMessage('system', '*', `  ${prefix} file: ${f.path}`, chName);
         }
       }
-      // Also trim the in-memory TUI buffer
-      try {
-        deps.callbacks.trimChannelBuffer(chName, result.summary ?? '', 20);
-      } catch (_e) {
-        // best-effort
-      }
-      // Rolling dropoff happens in persistChannelState — no manual state file manipulation here
+      // No TUI buffer manipulation — rolling dropoff in persistChannelState handles state file growth
     },
   });
 

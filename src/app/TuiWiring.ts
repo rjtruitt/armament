@@ -53,6 +53,7 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
     noColor: deps.config.noColor,
     mouse: deps.config.mouse ?? true,
     showThinkingInBuffer: UserConfig.instance().settings.session.showThinkingInBuffer,
+    showThinkingOverlay: UserConfig.instance().settings.session.showThinkingOverlay,
     menuConfig: {
       providers: deps.config.providers.map((p: any) => ({
         type: p.type ?? p, models: (p.models ?? []).map((m: any) => typeof m === 'string' ? m : m.name),

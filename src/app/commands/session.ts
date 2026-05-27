@@ -41,6 +41,21 @@ export function getSessionCommands(): CommandRegistration[] {
       },
     },
     {
+      name: 'wipe',
+      description: 'Wipe ALL state, messages, and display buffer for the current channel',
+      handler: (_args, ctx) => {
+        const ch = ctx.activeChannel;
+        if (ch) ctx.tui?.clearDisplay(ch);
+        // Clear in-memory messages
+        const msgs = ctx.getMessages();
+        if (Array.isArray(msgs)) msgs.length = 0;
+        ctx.setTurnCount(0);
+        // Clear persisted state
+        ctx.clearSession();
+        return { handled: true, output: 'Channel wiped. Starting fresh.' };
+      },
+    },
+    {
       name: 'status',
       description: 'Show current status',
       handler: (_args, ctx) => {
@@ -128,22 +143,15 @@ export function getSessionCommands(): CommandRegistration[] {
     {
       name: 'compact',
       aliases: ['compress'],
-      description: 'Compact context window and truncate persisted state',
+      description: 'Compact context window (onPostCompact writes the result message)',
       handler: (_args, ctx) => {
         const channel = ctx.activeChannel ?? '';
         const agent = ctx.channelAgents.get(channel);
         if (agent) {
-          const usage = agent.getContextUsage();
-          ctx.tui?.writeMessage('system', '*',
-            `Compacting ${channel}... (${usage.current}/${usage.max} tokens, ${usage.percent}%)`, channel);
           ctx.tui?.startCompacting(channel);
           agent.compact(true).then((result) => {
             ctx.tui?.stopCompacting();
-            if (result) {
-              const after = agent.getContextUsage();
-              ctx.tui?.writeMessage('system', '*',
-                `Compacted: ${usage.current} → ${after.current} tokens (saved ${usage.current - after.current})`, channel);
-            } else {
+            if (!result) {
               ctx.tui?.writeMessage('system', '*', 'Nothing to compact', channel);
             }
           });

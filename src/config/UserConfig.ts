@@ -18,6 +18,7 @@ export interface SessionSettings {
   promptCaching: boolean;
   useThreads: boolean;
   showThinkingInBuffer: boolean;
+  showThinkingOverlay: boolean;
   maxTurns: number;
   workerMaxTurns: number;
   conversationTimeout: number;
@@ -103,6 +104,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     promptCaching: true,
     useThreads: true,
     showThinkingInBuffer: true,
+    showThinkingOverlay: true,
     maxTurns: 100,
     workerMaxTurns: 250,
     conversationTimeout: 60,

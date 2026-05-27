@@ -225,8 +225,9 @@ export class TuiRenderer {
       const staging = this.channelManager.hasStaging(activeChannel)
         ? { lines: this.channelManager.getStagingLines(activeChannel), scrollOffset: this.channelManager.getStagingScrollOffset(activeChannel), messageCount: this.channelManager.getStagingMessageCount(activeChannel) }
         : undefined;
-      const thinkText = isThinking && this.statusDisplay.thinkingTextBuffer.length > 0 ? this.statusDisplay.thinkingTextBuffer : undefined;
-      this.painter.paintMainContent(this.channelManager.getScrollBuffer(activeChannel), isThinking, this.statusDisplay.thinkingFrame, this.statusDisplay.thinkingMsg, staging, thinkText);
+      const overlayThinking = isThinking && (this.opts.showThinkingOverlay !== false);
+      const thinkText = overlayThinking && this.statusDisplay.thinkingTextBuffer.length > 0 ? this.statusDisplay.thinkingTextBuffer : undefined;
+      this.painter.paintMainContent(this.channelManager.getScrollBuffer(activeChannel), overlayThinking, this.statusDisplay.thinkingFrame, this.statusDisplay.thinkingMsg, staging, thinkText);
       if (this.channelManager.getChannelLines(activeChannel).length === 0 && !this._welcomeShown) { this.painter.paintWelcome(); this._welcomeShown = true; }
     }
     if (!activeChannel.startsWith('@')) this.painter.paintApprovalWidget(this._approvalWidget);

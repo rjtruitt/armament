@@ -7,6 +7,7 @@ import { createChannelAgentWithTools } from './ChannelToolRegistration.js';
 import { NudgeManager } from './NudgeManager.js';
 import type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
 import { UserConfig } from '../config/index.js';
+import { stripAllAnsi } from '../core/stripAnsi.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { getArmaPath, getNotesPath, getArchDir, armaDataDir, getChannelRoot } from './ChannelPaths.js';
@@ -377,7 +378,7 @@ export class ChannelLifecycle {
   }
 
   /** Persist channel state to session storage. */
-  persistChannelState(channelName: string): void {
+  persistChannelState(channelName: string, force = false): void {
     const agent = this.channelAgents.get(channelName);
     if (!agent) return;
 
@@ -385,10 +386,14 @@ export class ChannelLifecycle {
 
     const agentState = agent.exportSession();
 
-    // Rolling dropoff: keep last 5000 messages, drop oldest
-    const MAX_SAVED_MESSAGES = 5000;
+    // Rolling dropoff: let it grow to 5500, then drop 1000 (keep 4500)
+    const MAX_SAVED_MESSAGES = 4500;
+    const DROPOFF_THRESHOLD = 5500;
     let messages = agentState.messages;
-    if (messages.length > MAX_SAVED_MESSAGES) {
+    if (!force && messages.length <= DROPOFF_THRESHOLD) {
+      return; // below threshold, skip write — next threshold hit or shutdown will persist
+    }
+    if (messages.length > DROPOFF_THRESHOLD) {
       const dropped = messages.length - MAX_SAVED_MESSAGES;
       messages = messages.slice(-MAX_SAVED_MESSAGES);
       // Ensure the first message is a system note about the drop
@@ -417,7 +422,7 @@ export class ChannelLifecycle {
       messages: messages.map((m: any, i: number) => ({
         id: `msg-${i}`,
         role: m.role,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        content: typeof m.content === 'string' ? stripAllAnsi(m.content) : JSON.stringify(m.content),
         timestamp: Date.now(),
         metadata: undefined,
         tool_call_id: m.tool_call_id ?? undefined,
@@ -426,7 +431,7 @@ export class ChannelLifecycle {
       chatMessages: chatMessages.map(m => ({
         type: m.type,
         sender: m.sender,
-        content: m.content,
+        content: stripAllAnsi(m.content),
         timestamp: m.timestamp.getTime(),
       })),
       agentConfig: {
@@ -473,7 +478,7 @@ export class ChannelLifecycle {
       agent.importSession({
         messages: loadMsgs.map(m => ({
           role: m.role as 'user' | 'assistant' | 'system' | 'tool',
-          content: m.content,
+          content: stripAllAnsi(m.content),
           ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
           ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
         })),
@@ -527,6 +532,13 @@ export class ChannelLifecycle {
     }
 
     const sessionState = existingAgent.exportSession();
+    // Strip any ANSI codes from messages before importing into new agent
+    if (sessionState.messages) {
+      sessionState.messages = sessionState.messages.map((m: any) => ({
+        ...m,
+        content: typeof m.content === 'string' ? stripAllAnsi(m.content) : m.content,
+      }));
+    }
     await existingAgent.shutdown().catch(() => {});
 
     try {
