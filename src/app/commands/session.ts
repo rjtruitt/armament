@@ -25,8 +25,10 @@ export function getSessionCommands(): CommandRegistration[] {
       name: 'clear',
       description: 'Clear screen',
       handler: (_args, ctx) => {
-        ctx.getMessages().length = 0;
-        ctx.setTurnCount(0);
+        const ch = ctx.activeChannel;
+        if (ch && ctx.tui) {
+          ctx.tui.clearDisplay(ch);
+        }
         return { handled: true };
       },
     },

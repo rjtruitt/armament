@@ -190,17 +190,42 @@ export class TuiConfigPanes {
             }
           }
         } else if (panelId === 'mcp' && action === 'a') {
-          this.delegate.setActiveChannel('#control');
-          this.opts.onSubmit('/mcp add').catch(() => {});
+          // Add a new MCP server entry and open the detail view for inline editing
+          const existing = this.opts.menuConfig?.mcpConfigs ?? [];
+          let idx = 1;
+          let name = 'new-server';
+          while (existing.some(c => c.name === name)) { idx++; name = `new-server-${idx}`; }
+          const newEntry = { name, config: { transport: 'stdio', command: 'npx', args: [], env: {}, timeout: 60 } };
+          const updated = [...existing, newEntry];
+          if (this.opts.menuConfig) this.opts.menuConfig.mcpConfigs = updated;
+          // Write to disk so onMcpConfigChange can find it on subsequent edits
+          Promise.all([import('node:fs'), import('node:path'), import('node:os')]).then(([fs, path, os]) => {
+            const file = path.join(os.homedir(), '.arma', 'mcp.json');
+            fs.writeFileSync(file, JSON.stringify(updated, null, 2), 'utf8');
+          }).catch(() => {});
+          this.refreshSchemas('mcp');
+          this.delegate.render();
+          // Open detail view on the new row
+          const mcpPane = this._configPanes.get('mcp');
+          if (mcpPane) {
+            const newIdx = mcpPane.filteredRows.findIndex((r: any) => r.id === name);
+            if (newIdx >= 0) {
+              mcpPane.setCursor(newIdx);
+              mcpPane.openDetail();
+              this.delegate.render();
+            }
+          }
         } else if (panelId === 'mcp' && action === 'd' && rowId && rowId !== 'none') {
+          // Remove from in-memory cache immediately so refreshSchemas sees the update
+          if (this.opts.menuConfig) {
+            this.opts.menuConfig.mcpConfigs = (this.opts.menuConfig.mcpConfigs ?? []).filter(c => c.name !== rowId);
+          }
           if (this.opts.onMcpRemove) this.opts.onMcpRemove(rowId);
           this.refreshSchemas('mcp');
           this.delegate.render();
         } else if (panelId === 'mcp' && action === 'r' && rowId && rowId !== 'none') {
-          this.delegate.setActiveChannel('#control');
           this.opts.onSubmit(`/mcp restart ${rowId}`).catch(() => {});
         } else if (panelId === 'scheduler.workflows' && action === 'r') {
-          this.delegate.setActiveChannel('#control');
           this.opts.onSubmit(`/flow run ${rowId}`).catch(() => {});
         }
       };
@@ -285,6 +310,11 @@ export class TuiConfigPanes {
       this.delegate.setActiveChannel(target);
       this.delegate.render();
     }, () => this.opts.menuConfig?.mcpConfigs);
+    // Re-register sub-schemas on refresh so row values update from config
+    if (paneId === 'session') registerSessionSchemas(pane);
+    if (paneId === 'context') registerContextSchemas(pane);
+    if (paneId === 'workspace') registerWorkspaceSchemas(pane);
+    if (paneId === 'display') registerDisplaySchemas(pane);
   }
 
   private registerPaneListViews(pane: ConfigPane, paneId: string): void {
@@ -432,6 +462,7 @@ export class TuiConfigPanes {
       // Session main
       'session.streaming.value': 'session.streaming',
       'session.autoSave.value': 'session.autoSave',
+      'session.showThinkingInBuffer.value': 'session.showThinkingInBuffer',
       'session.promptCaching.value': 'session.promptCaching',
       'session.maxTurns.value': 'session.maxTurns',
       'session.timeout.value': 'session.conversationTimeout',
@@ -489,6 +520,10 @@ export class TuiConfigPanes {
 
     if (cfgPath === 'display.theme') {
       this.opts.theme = value;
+      this.delegate.render();
+    }
+    if (cfgPath === 'session.showThinkingInBuffer') {
+      this.opts.showThinkingInBuffer = typeof value === 'boolean' ? value : value === 'on';
       this.delegate.render();
     }
     if (cfgPath === 'display.renderInterval') {

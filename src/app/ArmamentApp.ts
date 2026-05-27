@@ -228,6 +228,7 @@ export class ArmamentApp extends ReplPublicAPI {
       sessionState: this._sessionState,
       catalogManager: this._services.catalogManager,
       driftManager: this._services.driftManager,
+      askUserHandler: this._askUserHandler,
       getMcpServers: () => this.mcpServers,
       getChannelManagerInternal: () => this.channelManagerInternal,
       getActiveToolNames: () => this._activeToolNames,

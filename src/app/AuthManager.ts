@@ -16,6 +16,8 @@ export interface AuthManagerDeps {
 export class AuthManager {
   private deps: AuthManagerDeps;
   private _tokenValid = true;
+  /** Deduplication: one in-flight auth flow per provider key. */
+  private _authInProgress: Map<string, Promise<void>> = new Map();
 
   constructor(deps: AuthManagerDeps) {
     this.deps = deps;
@@ -47,35 +49,71 @@ export class AuthManager {
   }
 
   /**
-   * Handle auth error.
+   * Build a dedup key for a provider agent — includes both type and name/profile
+   * so different AWS profiles get separate auth flows.
+   */
+  private authKey(agent: any): string {
+    const provType = agent.providerType || 'unknown';
+    const provName = agent.providerName || '';
+    return provName ? `${provType}:${provName}` : provType;
+  }
+
+  /**
+   * Handle auth error with deduplication.
+   * If auth is already in progress for the same provider, subsequent callers
+   * silently wait instead of spawning duplicate prompts.
    */
   handleAuthError(channel: string, agent: any, _err: any): void {
+    const key = this.authKey(agent);
     const provType = agent.providerType || 'unknown';
-    this.deps.askUserHandler.ask(
-      `${provType} authentication expired.\nHow would you like to re-authenticate?`,
-      ['Run aws sso login', 'I\'ll handle it manually', 'Cancel'],
-      channel,
-      'radio',
-    ).then((choice) => {
-      if (choice === 'Run aws sso login') {
-        import('node:child_process').then(cp => {
-          cp.exec('aws sso login', (loginErr) => {
-            if (loginErr) {
-              this.deps.getTui()?.writeMessage('system', 'auth',
-                `SSO login failed: ${loginErr.message}`, channel);
-            } else {
-              this.deps.getTui()?.writeMessage('system', 'auth',
-                `SSO login complete. Retry your message.`, channel);
-            }
+
+    // Already handling auth for this provider — subsequent callers join silently
+    if (this._authInProgress.has(key)) {
+      this.deps.getTui()?.writeMessage('system', 'auth',
+        `${provType} authentication already in progress — waiting...`, channel);
+      this._authInProgress.get(key)!.then(() => {
+        this.deps.getTui()?.writeMessage('system', 'auth',
+          `${provType} authentication complete. Retry your message.`, channel);
+      });
+      return;
+    }
+
+    // First auth error for this provider — start the flow
+    const promise = new Promise<void>((resolve) => {
+      this.deps.askUserHandler.ask(
+        `${provType} authentication expired.\nHow would you like to re-authenticate?`,
+        ['Run aws sso login', 'I\'ll handle it manually', 'Cancel'],
+        channel,
+        'radio',
+      ).then((choice) => {
+        if (choice === 'Run aws sso login') {
+          import('node:child_process').then(({ exec }) => {
+            exec('aws sso login', (loginErr) => {
+              if (loginErr) {
+                this.deps.getTui()?.writeMessage('system', 'auth',
+                  `SSO login failed: ${loginErr.message}`, channel);
+              } else {
+                this.deps.getTui()?.writeMessage('system', 'auth',
+                  `SSO login complete. Retry your message.`, channel);
+              }
+              resolve();
+            });
           });
-        });
-        this.deps.getTui()?.writeMessage('system', 'auth',
-          `Opening SSO login flow...`, channel);
-      } else if (choice === 'I\'ll handle it manually') {
-        this.deps.getTui()?.writeMessage('system', 'auth',
-          `Run: aws sso login --profile <your-profile>\nThen retry your message.`, channel);
-      }
+          this.deps.getTui()?.writeMessage('system', 'auth',
+            `Opening SSO login flow...`, channel);
+        } else if (choice === 'I\'ll handle it manually') {
+          this.deps.getTui()?.writeMessage('system', 'auth',
+            `Run: aws sso login --profile <your-profile>\nThen retry your message.`, channel);
+          resolve();
+        } else {
+          resolve();
+        }
+      });
+    }).finally(() => {
+      this._authInProgress.delete(key);
     });
+
+    this._authInProgress.set(key, promise);
   }
 
   /**

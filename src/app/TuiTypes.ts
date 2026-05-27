@@ -55,6 +55,7 @@ export interface TuiRendererOptions {
   theme?: string;
   noColor?: boolean;
   mouse?: boolean;
+  showThinkingInBuffer?: boolean;
   menuConfig?: TuiMenuConfig;
   onSubmit: (text: string) => Promise<void>;
   onExit: () => void;

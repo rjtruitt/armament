@@ -20,6 +20,10 @@ export type { ILLMProvider };
 /** Configuration for ProviderPool, including auth event callbacks. */
 export interface ProviderPoolConfig {
   onDeviceCode?: (info: DeviceCodeInfo) => void;
+  /** Opens a browser for OAuth PKCE flow. Returns the authorization code. */
+  onBrowserAuth?: (url: string, manualUrl?: string) => Promise<string>;
+  /** Asks the user whether to refresh expired credentials. Returns true if user agrees. */
+  onRefreshPrompt?: (message: string) => Promise<boolean>;
 }
 
 /** Minimum provider interface for the pool (duck-typing for provider instances). */
@@ -122,12 +126,20 @@ export class ProviderPool implements IProviderPool {
 
       if (opts?.profile && (provider as { awsAuth?: { setAuthHandler: (h: IAuthHandler) => void } }).awsAuth?.setAuthHandler) {
         const onDeviceCode = this._config.onDeviceCode;
+        const onBrowserAuth = this._config.onBrowserAuth;
+        const onRefreshPrompt = this._config.onRefreshPrompt;
         const authHandler: IAuthHandler = {
           async handleDeviceCodeAuth(info: DeviceCodeInfo): Promise<void> {
             onDeviceCode?.(info);
           },
-          async handleBrowserAuth(_url: string): Promise<string> { return ''; },
-          async handleRefreshPrompt(_message: string): Promise<boolean> { return false; },
+          async handleBrowserAuth(url: string, manualUrl?: string): Promise<string> {
+            if (onBrowserAuth) return onBrowserAuth(url, manualUrl);
+            return '';
+          },
+          async handleRefreshPrompt(message: string): Promise<boolean> {
+            if (onRefreshPrompt) return onRefreshPrompt(message);
+            return false;
+          },
           async handleAuthError(_error: Error): Promise<void> {},
           onAuthenticationFailed(_info: { provider: string; reason: string; canRetry: boolean }): void {},
         };

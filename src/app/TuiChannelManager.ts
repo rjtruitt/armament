@@ -14,17 +14,6 @@ import {
   type CachedRendererState,
 } from './TuiChannelHelpers.js';
 
-/** Per-channel streaming state. */
-interface StreamState {
-  sender: string;
-  content: string;
-  contentParts: string[];
-  lineStart: number;
-  thinkingContent: string;
-  thinkingParts: string[];
-  finalized: boolean;
-}
-
 /**
  * Owns the per-channel line buffers, scroll buffers, tool blocks,
  * and streaming message state. Provides methods for appending content
@@ -41,8 +30,11 @@ export class TuiChannelManager {
   private _toolBlocks: Map<string, ToolBlock[]> = new Map();
   private _toolBlockIdCounter = 0;
 
-  /** Per-channel streaming state. */
-  private _streamStates: Map<string, StreamState> = new Map();
+  /** Per-channel streaming state — each channel gets its own entry to avoid cross-channel corruption. */
+  private _streamStates: Map<string, {
+    sender: string; content: string; contentParts: string[];
+    lineStart: number; thinkingContent: string; thinkingParts: string[];
+  }> = new Map();
 
   private _stagingMessages: Map<string, Array<{ sender: string; content: string; rendered: string[] }>> = new Map();
   private _stagingScrollOffset: Map<string, number> = new Map();
@@ -50,12 +42,11 @@ export class TuiChannelManager {
   private _rendererCache: CachedRendererState = { renderer: null, width: 0, theme: '' };
 
   /**
-   * Whether any channel has an active stream.
+   * Gets the is streaming.
    */
   get isStreaming(): boolean { return this._streamStates.size > 0; }
-
   /**
-   * Check if a specific channel has an active stream.
+   * Checks whether channel streaming.
    */
   isChannelStreaming(channel: string): boolean { return this._streamStates.has(channel); }
 
@@ -157,21 +148,16 @@ export class TuiChannelManager {
     if (!this._channelLines.has(channel)) this._channelLines.set(channel, []);
     if (!this._channelMessages.has(channel)) this._channelMessages.set(channel, []);
     const channelBuf = this._channelLines.get(channel)!;
-    this._streamStates.set(channel, {
-      sender, content: '', contentParts: [],
-      lineStart: channelBuf.length,
-      thinkingContent: '', thinkingParts: [],
-      finalized: false,
-    });
+    this._streamStates.set(channel, { sender, content: '', contentParts: [], lineStart: channelBuf.length, thinkingContent: '', thinkingParts: [] });
   }
 
   /** Append a text chunk to the current streaming message for a channel. */
   appendStreamChunk(text: string, channel: string): void {
     const state = this._streamStates.get(channel);
-    if (!state || state.finalized) return;
+    if (!state) return;
     state.contentParts.push(text);
     state.content += text;
-    this.renderStreamNow(channel);
+    this.scheduleStreamRender(channel);
   }
 
   /** Append thinking/reasoning content to the current streaming message for a channel. */
@@ -180,6 +166,7 @@ export class TuiChannelManager {
     if (!state) return;
     state.thinkingParts.push(text);
     state.thinkingContent += text;
+    this.scheduleStreamRender(channel);
   }
 
   /** Cancel the current streaming message for a channel -- discard partial content without committing. */
@@ -188,8 +175,10 @@ export class TuiChannelManager {
     if (!ch) return;
     const state = this._streamStates.get(ch);
     if (!state) return;
-    this.flushRender(ch);
-    state.finalized = true;
+    if (this._streamRenderTimer) {
+      clearTimeout(this._streamRenderTimer);
+      this._streamRenderTimer = null;
+    }
     const { lineStart } = state;
     this._streamStates.delete(ch);
 
@@ -203,9 +192,11 @@ export class TuiChannelManager {
   /** Finalize the current streaming message for a channel (remove cursor, store as message). */
   finalizeStreamMessage(channel: string): void {
     const state = this._streamStates.get(channel);
-    if (!state || state.finalized) return;
-    this.flushRender(channel);
-    state.finalized = true;
+    if (!state) return;
+    if (this._streamRenderTimer) {
+      clearTimeout(this._streamRenderTimer);
+      this._streamRenderTimer = null;
+    }
     const { sender, content, lineStart } = state;
     this._streamStates.delete(channel);
 
@@ -402,7 +393,36 @@ export class TuiChannelManager {
     return flushed;
   }
 
-  /** Trim channel buffer: keep system messages + last N non-system, insert summary at start. */
+  /** Delete channel data when a channel is removed. */
+  removeChannel(channel: string): void {
+    this._channelMessages.delete(channel);
+    this._channelLines.delete(channel);
+    this._scrollBuffers.delete(channel);
+    this._toolBlocks.delete(channel);
+    this._streamStates.delete(channel);
+    this._stagingMessages.delete(channel);
+    this._stagingScrollOffset.delete(channel);
+  }
+
+  /** Flush pending render timer. */
+  flushRender(channel: string): void {
+    if (this._streamRenderTimer) {
+      clearTimeout(this._streamRenderTimer);
+      this._streamRenderTimer = null;
+    }
+  }
+
+  /** Trim channel buffer — keeps system msgs + last N non-system + compaction summary. */
+  /** Clear display buffer for a channel without touching messages or state. */
+  clearDisplay(channel: string): void {
+    this.flushRender(channel);
+    this._channelLines.set(channel, []);
+    const sb = this._scrollBuffers.get(channel);
+    if (sb) sb.clear();
+    const staging = this._stagingMessages.get(channel);
+    if (staging) staging.length = 0;
+  }
+
   trimChannelBuffer(channel: string, summary: string, keepCount: number): void {
     this.flushRender(channel);
     this._streamStates.delete(channel);
@@ -439,50 +459,37 @@ export class TuiChannelManager {
     scrollBuf.setLines(rendered);
   }
 
-  /** Delete channel data when a channel is removed. */
-  removeChannel(channel: string): void {
-    this.flushRender(channel);
-    this._channelMessages.delete(channel);
-    this._channelLines.delete(channel);
-    this._scrollBuffers.delete(channel);
-    this._toolBlocks.delete(channel);
-    this._streamStates.delete(channel);
-    this._stagingMessages.delete(channel);
-    this._stagingScrollOffset.delete(channel);
-  }
+  private _streamRenderTimer: ReturnType<typeof setTimeout> | null = null;
+  private _lastStreamRender = 0;
+  private static STREAM_RENDER_INTERVAL = 100;
 
-  /** Per-channel render timers — each channel gets its own to avoid cross-channel races. */
-  private _renderTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private static RENDER_INTERVAL = 50;
-
-  /** Schedule a render for a channel (debounced per-channel). */
-  private renderStreamNow(channel: string): void {
-    const existing = this._renderTimers.get(channel);
-    if (existing) return; // already queued
-
-    this._renderTimers.set(channel, setTimeout(() => {
-      this._renderTimers.delete(channel);
-      const state = this._streamStates.get(channel);
-      if (!state || state.finalized) return;
-      reRenderStreamMessage(
-        channel,
-        state,
-        this._channelLines,
-        this._scrollBuffers,
-        this.layout,
-        this._rendererCache,
-        this.opts,
-        (ch) => this.getScrollBuffer(ch),
-      );
-    }, TuiChannelManager.RENDER_INTERVAL));
-  }
-
-  /** Flush any pending render timer for a channel (used before finalize/cancel). */
-  private flushRender(channel: string): void {
-    const timer = this._renderTimers.get(channel);
-    if (timer) {
-      clearTimeout(timer);
-      this._renderTimers.delete(channel);
+  private scheduleStreamRender(channel: string): void {
+    const now = Date.now();
+    const elapsed = now - this._lastStreamRender;
+    if (elapsed >= TuiChannelManager.STREAM_RENDER_INTERVAL) {
+      this._lastStreamRender = now;
+      this.reRenderStream(channel);
+    } else if (!this._streamRenderTimer) {
+      this._streamRenderTimer = setTimeout(() => {
+        this._streamRenderTimer = null;
+        this._lastStreamRender = Date.now();
+        this.reRenderStream(channel);
+      }, TuiChannelManager.STREAM_RENDER_INTERVAL - elapsed);
     }
+  }
+
+  private reRenderStream(channel: string): void {
+    const state = this._streamStates.get(channel);
+    if (!state) return;
+    reRenderStreamMessage(
+      channel,
+      state,
+      this._channelLines,
+      this._scrollBuffers,
+      this.layout,
+      this._rendererCache,
+      this.opts,
+      (ch) => this.getScrollBuffer(ch),
+    );
   }
 }

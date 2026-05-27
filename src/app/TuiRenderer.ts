@@ -499,12 +499,12 @@ export class TuiRenderer {
    * Write message.
    */
   writeMessage(type: 'user' | 'agent' | 'system', sender: string, content: string, channel?: string): void { this.channelView.writeMessage(type, sender, content, channel); }
-  /** Trim channel buffer after compaction. */
-  trimChannelBuffer(channel: string, summary: string, keepCount: number): void { this.channelView.trimChannelBuffer(channel, summary, keepCount); }
   /**
    * Begin stream message.
    */
   beginStreamMessage(sender: string, channel?: string): void { this.channelView.beginStreamMessage(sender, channel); }
+  trimChannelBuffer(channel: string, summary: string, keepCount: number): void { this.channelView.trimChannelBuffer(channel, summary, keepCount); }
+  clearDisplay(channel: string): void { this.channelView.clearDisplay(channel); }
   /**
    * Append stream chunk.
    */

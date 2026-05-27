@@ -95,12 +95,9 @@ export function resumeAgentTurn(channel: string, deps: ResumeAgentDeps): void {
   const resume = async () => {
     try {
       if (tui && (agent as any).sendMessageStreaming) {
-        let streamStarted = false;
+        tui.beginStreamMessage(deps.getAgentNick(), channel);
         for await (const chunk of agent.sendMessageStreaming('[system] Process pending worker results.')) {
-          if (chunk.type === 'text' && chunk.text) {
-            if (!streamStarted) { tui.beginStreamMessage(deps.getAgentNick(), channel); streamStarted = true; }
-            tui.appendStreamChunk(chunk.text, channel);
-          }
+          if (chunk.type === 'text' && chunk.text) tui.appendStreamChunk(chunk.text, channel);
           else if (chunk.type === 'thinking' && chunk.text) tui.appendStreamThinking(chunk.text, channel);
           else if (chunk.type === 'tool_call') {
             tui.finalizeStreamMessage(channel);

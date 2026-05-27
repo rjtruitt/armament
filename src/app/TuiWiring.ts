@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { UserConfig } from '../config/index.js';
 import { logInfo, type IReplConfig } from '../core/index.js';
 import { TuiRenderer as TuiMode } from './TuiRenderer.js';
-import type { ProviderPool, CatalogManager } from '../providers/index.js';
+import type { ProviderPool, CatalogManager, AskUserHandler } from '../providers/index.js';
 import type { McpIntegration } from './McpIntegration.js';
 import type { McpServer } from './McpManager.js';
 import type { SessionPersistence, IChannelManifestEntry, IChannelStateFile } from '../session/index.js';
@@ -24,6 +24,7 @@ export interface TuiWiringDeps {
   sessionState: SessionState;
   catalogManager: CatalogManager;
   driftManager: DriftManager;
+  askUserHandler: AskUserHandler;
   getMcpServers: () => Map<string, McpServer>;
   getChannelManagerInternal: () => ChannelInfo[];
   getActiveToolNames: () => string[];
@@ -51,6 +52,7 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
     theme: deps.config.theme,
     noColor: deps.config.noColor,
     mouse: deps.config.mouse ?? true,
+    showThinkingInBuffer: UserConfig.instance().settings.session.showThinkingInBuffer,
     menuConfig: {
       providers: deps.config.providers.map((p: any) => ({
         type: p.type ?? p, models: (p.models ?? []).map((m: any) => typeof m === 'string' ? m : m.name),
@@ -86,7 +88,27 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
           if (!target[parts[i]]) target[parts[i]] = {};
           target = target[parts[i]];
         }
-        target[parts[parts.length - 1]] = value;
+        // Parse env string "KEY=val;KEY2=val2" into object { KEY: "val", KEY2: "val2" }
+        if (parts[parts.length - 1] === 'env' && typeof value === 'string') {
+          const obj: Record<string, string> = {};
+          if (value.trim()) {
+            for (const pair of value.split(';')) {
+              const eqIdx = pair.indexOf('=');
+              if (eqIdx > 0) {
+                obj[pair.slice(0, eqIdx).trim()] = pair.slice(eqIdx + 1).trim();
+              }
+            }
+          }
+          target.env = obj;
+        // Parse args string into array
+        } else if (parts[parts.length - 1] === 'args' && typeof value === 'string') {
+          target.args = value.trim() ? value.trim().split(/\s+/) : [];
+        // Parse autoApprove comma-separated string into array
+        } else if (parts[parts.length - 1] === 'autoApprove' && typeof value === 'string') {
+          target.autoApprove = value.trim() ? value.trim().split(/\s*,\s*/) : [];
+        } else {
+          target[parts[parts.length - 1]] = value;
+        }
         const file = path.join(homedir(), '.arma', 'mcp.json');
         fs.writeFileSync(file, JSON.stringify(configs, null, 2), 'utf8');
       }
@@ -134,6 +156,35 @@ export function configureTuiPostCreate(tui: TuiMode, deps: TuiWiringDeps): void 
       import('child_process').then(cp => {
         cp.exec(`open "${info.verificationUrlComplete || info.verificationUrl}"`);
       });
+    },
+    onBrowserAuth: async (url: string, manualUrl?: string) => {
+      tui.writeMessage('system', '*', 'Browser authentication required:');
+      tui.writeMessage('system', '*', `Opening: ${url}`);
+      import('child_process').then(cp => {
+        cp.exec(`open "${url}"`);
+      });
+      // Ask user for the authorization code returned by the browser redirect
+      const result = await deps.askUserHandler.ask(
+        'Enter the authorization code from the browser (or paste the full redirect URL):',
+        [],
+        '#control',
+        'freeform',
+      );
+      // If user pasted a full URL, extract the code param
+      if (result && result.includes('code=')) {
+        const parsed = new URL(result);
+        return parsed.searchParams.get('code') || result;
+      }
+      return result || '';
+    },
+    onRefreshPrompt: async (message: string) => {
+      const result = await deps.askUserHandler.ask(
+        `${message}\nRefresh credentials?`,
+        ['Refresh', 'Skip'],
+        '#control',
+        'radio',
+      );
+      return result === 'Refresh';
     },
   });
 

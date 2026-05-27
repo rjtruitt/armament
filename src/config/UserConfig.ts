@@ -17,6 +17,7 @@ export interface SessionSettings {
   autoSave: boolean;
   promptCaching: boolean;
   useThreads: boolean;
+  showThinkingInBuffer: boolean;
   maxTurns: number;
   workerMaxTurns: number;
   conversationTimeout: number;
@@ -81,6 +82,7 @@ export interface UserSettings {
   defaultProvider?: string;
   defaultModel?: string;
   mcpClientName?: string;
+  oauthClientName?: string;
   session: SessionSettings;
   context: ContextSettings;
   workspace: WorkspaceSettings;
@@ -100,6 +102,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     autoSave: true,
     promptCaching: true,
     useThreads: true,
+    showThinkingInBuffer: true,
     maxTurns: 100,
     workerMaxTurns: 250,
     conversationTimeout: 60,
@@ -210,6 +213,11 @@ export class UserConfig {
    * Gets the mcp client name.
    */
   get mcpClientName(): string { return this._settings.mcpClientName || 'Armament'; }
+
+  /**
+   * Gets the OAuth client name for browser-based OAuth flows.
+   */
+  get oauthClientName(): string { return this._settings.oauthClientName || 'claude_code'; }
 
   /** Returns the default model for a given provider type. */
   getProviderDefaultModel(providerType: string): string | undefined {

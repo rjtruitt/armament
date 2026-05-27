@@ -350,6 +350,12 @@ export class TuiChannelView {
     if (channel === this.getActiveChannel()) this.delegate.render();
   }
 
+  /** Clear display buffer for a channel. */
+  clearDisplay(channel: string): void {
+    this.channelManager.clearDisplay(channel);
+    if (channel === this.getActiveChannel()) this.delegate.render();
+  }
+
   /**
    * Begin tool block.
    */

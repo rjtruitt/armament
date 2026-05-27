@@ -20,6 +20,7 @@ export function registerSessionSchemas(pane: ConfigPane): void {
     rows: [
       { id: 'streaming', status: 'active', cells: { setting: 'Streaming', value: s.streaming ? 'on' : 'off', type: 'toggle' } },
       { id: 'autoSave', status: 'active', cells: { setting: 'Auto-save', value: s.autoSave ? 'on' : 'off', type: 'toggle' } },
+      { id: 'showThinkingInBuffer', status: 'active', cells: { setting: 'Show Thinking in Buffer', value: s.showThinkingInBuffer ? 'on' : 'off', type: 'toggle', description: 'Show streaming thinking/reasoning text in chat buffer' } },
       { id: 'promptCaching', status: 'active', cells: { setting: 'Prompt Caching', value: s.promptCaching ? 'on' : 'off', type: 'toggle' } },
       { id: 'maxTurns', status: 'active', cells: { setting: 'Max Turns', value: String(s.maxTurns), type: 'number' } },
       { id: 'timeout', status: 'active', cells: { setting: 'Conversation Timeout', value: `${s.conversationTimeout}m`, type: 'text' } },

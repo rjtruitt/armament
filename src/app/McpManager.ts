@@ -15,7 +15,7 @@ export interface McpServer {
   status: string;
   tools: any[];
   client?: import('@modelcontextprotocol/sdk/client/index.js').Client;
-  transport?: import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransport;
+  transport?: any;
 }
 
 /**
@@ -101,7 +101,7 @@ export class McpManager {
     }
 
     let mcpClient: import('@modelcontextprotocol/sdk/client/index.js').Client | undefined;
-    let mcpTransport: import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransport | undefined;
+    let mcpTransport: any;
     let tools: any[] = [];
 
     if ((transport === 'streamable-http' || transport === 'sse') && config.url) {
@@ -192,6 +192,46 @@ export class McpManager {
         this.callbacks.writeMessage('system', 'mcp',
           `SDK connect failed: ${e instanceof Error ? e.message : String(e)}`, '#logs');
         tools = this.toolExec.discoverToolsForServer(name, config);
+      }
+    } else if (config.command) {
+      // Real stdio spawning via MCP SDK
+      try {
+        const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+        const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+
+        const cmd = config.command;
+        const cmdArgs = Array.isArray(config.args) ? config.args : [];
+        const cmdEnv: Record<string, string> = {};
+        for (const [k, v] of Object.entries(process.env)) {
+          if (v !== undefined) cmdEnv[k] = v;
+        }
+        if (config.env && typeof config.env === 'object') {
+          for (const [k, v] of Object.entries(config.env as Record<string, string>)) {
+            if (v !== '') cmdEnv[k] = v;
+          }
+        }
+
+        mcpTransport = new StdioClientTransport({
+          command: cmd,
+          args: cmdArgs,
+          env: cmdEnv,
+        });
+
+        mcpClient = new Client({ name: 'armament', version: '1.0.0' });
+        await mcpClient.connect(mcpTransport);
+
+        const toolsResult = await mcpClient.listTools();
+        tools = (toolsResult.tools ?? []).map((t: any) => ({
+          name: t.name,
+          description: t.description ?? `${t.name} tool`,
+          inputSchema: t.inputSchema,
+        }));
+        this.callbacks.writeMessage('system', 'mcp',
+          `Discovered ${tools.length} tools from ${name}`, '#logs');
+      } catch (e: unknown) {
+        this.callbacks.writeMessage('system', 'mcp',
+          `Stdio connect failed for ${name}: ${e instanceof Error ? e.message : String(e)}`, '#logs');
+        tools = config.tools ?? this.toolExec.discoverToolsForServer(name, config);
       }
     } else {
       tools = config.tools ?? this.toolExec.discoverToolsForServer(name, config);

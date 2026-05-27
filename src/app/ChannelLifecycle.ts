@@ -385,6 +385,23 @@ export class ChannelLifecycle {
 
     const agentState = agent.exportSession();
 
+    // Rolling dropoff: keep last 5000 messages, drop oldest
+    const MAX_SAVED_MESSAGES = 5000;
+    let messages = agentState.messages;
+    if (messages.length > MAX_SAVED_MESSAGES) {
+      const dropped = messages.length - MAX_SAVED_MESSAGES;
+      messages = messages.slice(-MAX_SAVED_MESSAGES);
+      // Ensure the first message is a system note about the drop
+      messages[0] = {
+        role: 'system',
+        content: `[Rolling dropoff — dropped ${dropped} oldest messages to stay under ${MAX_SAVED_MESSAGES}]`,
+      } as any;
+      // Trim any preceding system messages
+      while (messages.length > 1 && messages[1]?.role === 'system') {
+        messages.splice(1, 1);
+      }
+    }
+
     const bareName = channelName.startsWith('#') ? channelName.slice(1) : channelName;
     const workers = Array.from(this.channelAgents.entries())
       .filter(([id]) => id.startsWith(`worker-${bareName}`))
@@ -397,7 +414,7 @@ export class ChannelLifecycle {
 
     const state: IChannelStateFile = {
       channelName,
-      messages: agentState.messages.map((m: any, i: number) => ({
+      messages: messages.map((m: any, i: number) => ({
         id: `msg-${i}`,
         role: m.role,
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
@@ -442,8 +459,19 @@ export class ChannelLifecycle {
 
     const agent = this.channelAgents.get(chName);
     if (agent && state.messages && state.messages.length > 0) {
+      // Rolling dropoff on load too — safety net in case state file exceeded 5000
+      const MAX_LOADED_MESSAGES = 5000;
+      let loadMsgs = state.messages;
+      if (loadMsgs.length > MAX_LOADED_MESSAGES) {
+        loadMsgs = loadMsgs.slice(-MAX_LOADED_MESSAGES);
+        loadMsgs[0] = {
+          id: 'msg-dropoff',
+          role: 'system',
+          content: `[Rolling dropoff — earlier messages trimmed to stay under ${MAX_LOADED_MESSAGES}]`,
+        } as any;
+      }
       agent.importSession({
-        messages: state.messages.map(m => ({
+        messages: loadMsgs.map(m => ({
           role: m.role as 'user' | 'assistant' | 'system' | 'tool',
           content: m.content,
           ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),

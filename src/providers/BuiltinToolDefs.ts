@@ -66,6 +66,47 @@ function primaryWorkspace(workspace?: string): string | undefined {
   return workspace.split(':')[0];
 }
 
+/** Simple circuit breaker for BashTool to prevent runaway command loops. */
+class BashCircuitBreaker {
+  private consecutiveFailures = 0;
+  private lastFailureTime = 0;
+  private readonly threshold = 5;
+  private readonly cooldownMs = 60_000;
+
+  /** Check if the circuit is open (too many recent failures). */
+  get isOpen(): boolean {
+    if (this.consecutiveFailures === 0) return false;
+    const elapsed = Date.now() - this.lastFailureTime;
+    if (elapsed >= this.cooldownMs) {
+      this.consecutiveFailures = 0;
+      return false;
+    }
+    return this.consecutiveFailures >= this.threshold;
+  }
+
+  /** Remaining cooldown seconds for error message. */
+  get remainingCooldown(): number {
+    if (!this.isOpen) return 0;
+    return Math.ceil((this.cooldownMs - (Date.now() - this.lastFailureTime)) / 1000);
+  }
+
+  /** Report a successful execution — resets the counter. */
+  recordSuccess(): void {
+    this.consecutiveFailures = 0;
+  }
+
+  /** Report a failure — increments counter only for execution-level errors. */
+  recordFailure(code?: string): void {
+    // Only count real execution failures, not permission denials or invalid args
+    if (code === 'TIMEOUT' || code === 'EXECUTION_ERROR' || code === 'SPAWN_ERROR') {
+      this.consecutiveFailures++;
+      this.lastFailureTime = Date.now();
+    }
+  }
+}
+
+const bashCircuitBreaker = new BashCircuitBreaker();
+
 /** Executes shell commands with timeout, output cap, and background mode. */
 export class BashTool implements ITool {
   readonly name = 'bash';
@@ -88,6 +129,11 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
   });
 
   async execute(args: unknown, _context: ToolContext): Promise<ToolResult> {
+    // Circuit breaker check
+    if (bashCircuitBreaker.isOpen) {
+      return { success: false, error: { message: `Circuit breaker open — too many consecutive bash failures. Try again in ${bashCircuitBreaker.remainingCooldown}s.`, code: 'CIRCUIT_OPEN' } };
+    }
+
     const { command, timeout, run_in_background } = args as { command: string; timeout?: number; run_in_background?: boolean };
     if (!command || typeof command !== 'string') {
       return { success: false, error: { message: `Missing required "command" argument. Correct usage: {"command": "your shell command"}`, code: 'INVALID_ARGS' } };
@@ -137,9 +183,11 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
           stdio: 'ignore',
         });
         child.unref();
+        bashCircuitBreaker.recordSuccess();
         return { success: true, data: `Started in background (pid: ${child.pid})` };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
+        bashCircuitBreaker.recordFailure('SPAWN_ERROR');
         return { success: false, error: { message: msg, code: 'SPAWN_ERROR' } };
       }
     }
@@ -155,13 +203,16 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
         }, (err, stdout, stderr) => {
           if (err) {
             if (err.killed) {
+              bashCircuitBreaker.recordFailure('TIMEOUT');
               reject(Object.assign(new Error(`Command timed out after ${timeoutMs / 1000}s`), { code: 'TIMEOUT' }));
               return;
             }
             const combined = [stdout?.trim(), stderr?.trim()].filter(Boolean).join('\n') || err.message;
+            bashCircuitBreaker.recordFailure('EXECUTION_ERROR');
             reject(Object.assign(new Error(combined), { code: 'EXECUTION_ERROR' }));
             return;
           }
+          bashCircuitBreaker.recordSuccess();
           resolve(((stdout || '') + (stderr || '')).trim());
         });
       });
@@ -169,6 +220,7 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       const code = err instanceof Error && 'code' in err ? (err as any).code : 'EXECUTION_ERROR';
+      bashCircuitBreaker.recordFailure(code);
       return { success: false, error: { message: msg, code } };
     }
   }
