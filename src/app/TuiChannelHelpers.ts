@@ -117,11 +117,6 @@ export function reRenderStreamMessage(
   const msg: ChatMessage = { type: 'agent', sender, content: displayContent, timestamp: new Date() };
   const rendered = renderer.renderMessage(msg);
 
-  if (thinkingContent) {
-    const thinkLine = `  \x1b[2m\u{1f4ad} thinking... (${thinkingContent.length} chars)\x1b[0m`;
-    rendered.unshift(thinkLine);
-  }
-
   channelBuf.splice(lineStart, channelBuf.length - lineStart, ...rendered);
 
   const scrollBuf = getScrollBuffer(channel);

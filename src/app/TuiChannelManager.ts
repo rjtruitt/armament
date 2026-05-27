@@ -166,7 +166,6 @@ export class TuiChannelManager {
     if (!state) return;
     state.thinkingParts.push(text);
     state.thinkingContent += text;
-    this.scheduleStreamRender(channel);
   }
 
   /** Cancel the current streaming message for a channel -- discard partial content without committing. */

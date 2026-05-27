@@ -126,12 +126,12 @@ export class StreamRouter {
     let pendingStart: { blockId: number; channel: string; toolName: string } | null = null;
     let fullResponse = '';
     let inToolCall = false;
+    let streamStarted = false;
 
     const bus = getGlobalEventBus();
     bus.emit({ type: 'message', channel: target.channel, message: { role: 'user', content: input, timestamp: Date.now() } });
 
     tui?.startThinking(target.channel);
-    if (showText) tui?.beginStreamMessage(target.nick, target.channel);
 
     for await (const chunk of agent.sendMessageStreaming(input)) {
       if (interrupted?.()) break;
@@ -144,6 +144,10 @@ export class StreamRouter {
             if (inToolCall) {
               tui?.beginStreamMessage(target.nick, target.channel);
               inToolCall = false;
+              streamStarted = true;
+            } else if (!streamStarted) {
+              tui?.beginStreamMessage(target.nick, target.channel);
+              streamStarted = true;
             }
             tui?.appendStreamChunk(chunk.text, target.channel);
           }
@@ -153,10 +157,6 @@ export class StreamRouter {
           if (!chunk.text) break;
           bus.emit({ type: 'thinking', channel: target.channel, text: chunk.text });
           if (showText) {
-            if (inToolCall) {
-              tui?.beginStreamMessage(target.nick, target.channel);
-              inToolCall = false;
-            }
             tui?.appendStreamThinking(chunk.text, target.channel);
           }
           break;

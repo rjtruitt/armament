@@ -67,8 +67,7 @@ export class TuiContentPainter {
     }
 
     const chatHeight = stagingHeight > 0 ? totalHeight - stagingHeight - 1 : totalHeight;
-    const hasThinkingText = thinkingActive && thinkingText && thinkingText.length > 0;
-    const thinkingRows = thinkingActive ? (hasThinkingText ? 2 : 1) : 0;
+    const thinkingRows = thinkingActive ? 1 : 0;
     const contentHeight = chatHeight - thinkingRows;
     scrollBuf.resize(mainWidth, contentHeight);
 
@@ -92,7 +91,8 @@ export class TuiContentPainter {
       const spinner = SPINNER_FRAMES[thinkingFrame % SPINNER_FRAMES.length];
       const elapsed = Math.floor(thinkingFrame / 10);
       const timeStr = elapsed > 0 ? ` ${elapsed}s` : '';
-      const label = `${spinner} ${thinkingMsg}${timeStr}`;
+      const charsStr = thinkingText ? ` (${thinkingText.length} chars)` : '';
+      const label = `${spinner} ${thinkingMsg}${timeStr}${charsStr}`;
       const thinkRow = mainStartRow + contentHeight;
       if (thinkRow < mainBottom) {
         if (noColor) {
@@ -111,31 +111,7 @@ export class TuiContentPainter {
         }
       }
 
-      if (hasThinkingText && thinkRow + 1 < mainBottom) {
-        const textRow = thinkRow + 1;
-        const availW = mainWidth - 4;
-        const clean = thinkingText!.replace(/\n/g, ' ').replace(/\s+/g, ' ');
-        const endPos = Math.max(0, clean.length);
-        const visStart = Math.max(0, endPos - availW);
-        const visible = clean.slice(visStart, endPos).slice(-availW);
 
-        if (!noColor) {
-          const accent = theme.accentStops[0];
-          let out = '';
-          for (let ci = 0; ci < visible.length && ci < availW; ci++) {
-            const t = visible.length > 1 ? ci / (visible.length - 1) : 1;
-            const fade = t * t;
-            const r = Math.round(50 + fade * (accent[0] * 0.6));
-            const g = Math.round(50 + fade * (accent[1] * 0.6));
-            const b = Math.round(50 + fade * (accent[2] * 0.6));
-            out += `${fgRgb(r, g, b)}${visible[ci]}`;
-          }
-          out += reset;
-          this.screen.writeAt(textRow, mainStartCol + 4, out);
-        } else {
-          this.screen.writeAt(textRow, mainStartCol + 4, visible.slice(0, availW));
-        }
-      }
     }
 
     if (stagingHeight > 0 && staging) {
