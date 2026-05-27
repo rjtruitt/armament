@@ -126,7 +126,7 @@ export function getSessionCommands(): CommandRegistration[] {
     {
       name: 'compact',
       aliases: ['compress'],
-      description: 'Compact context window',
+      description: 'Compact context window and truncate persisted state',
       handler: (_args, ctx) => {
         const channel = ctx.activeChannel ?? '';
         const agent = ctx.channelAgents.get(channel);

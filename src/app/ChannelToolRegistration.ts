@@ -322,6 +322,35 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
           deps.callbacks.writeMessage('system', '*', `  ${prefix} file: ${f.path}`, chName);
         }
       }
+      // Replace compacted messages in persisted state with the compaction summary
+      try {
+        const fs = require('node:fs');
+        const path2 = require('node:path');
+        const home = process.env.HOME;
+        const slug = chName.replace(/^#/, '').replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
+        const stateFile = path2.join(home, '.arma', 'sessions', 'channels', `${slug}.state.json`);
+        if (fs.existsSync(stateFile)) {
+          const data = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+          const compactedCount = result.before.messages - result.after.messages;
+          const systemMsgs = data.messages.filter((m: any) => m.role === 'system');
+          const userAndAgent = data.messages.filter((m: any) => m.role !== 'system');
+          // Remove the oldest user/agent messages equal to what was compacted
+          const keepCount = Math.max(1, userAndAgent.length - compactedCount);
+          const kept = userAndAgent.slice(-keepCount);
+          // Insert compaction summary as a system message at the start
+          const summaryMsg = {
+            id: 'msg-summary',
+            role: 'system',
+            content: `[Compacted — earlier conversation summarized. Referenced files: ${result.summary?.split('\n')[0] ?? ''}]`,
+            timestamp: Date.now(),
+          };
+          data.messages = [summaryMsg, ...systemMsgs, ...kept];
+          data.messages.forEach((m: any, i: number) => m.id = 'msg-' + i);
+          fs.writeFileSync(stateFile, JSON.stringify(data, null, 2));
+        }
+      } catch (_e) {
+        // state truncation is best-effort
+      }
     },
   });
 
