@@ -1,7 +1,7 @@
 /** Supported LLM provider types. */
 export type ProviderType = 'bedrock' | 'anthropic' | 'openai' | 'gemini' | 'ollama';
 
-/** Per-model configuration including pricing and cache behavior. */
+/** Per-model configuration including pricing, cache behavior, and model-specific options. */
 export interface IModelPricing {
   name: string;
   /** Input price per million tokens (USD). Defaults to 3 if omitted. */
@@ -12,6 +12,10 @@ export interface IModelPricing {
   cacheReadMultiplier?: number;
   /** Cache write multiplier (e.g. 1.25 = 25% premium for Claude, 0 = no write cost for OpenAI). Defaults to 1.25. */
   cacheWriteMultiplier?: number;
+  /** Extended thinking budget configuration (Anthropic-specific, deprecated for new models). */
+  thinking?: { enabled?: boolean; budgetTokens?: number };
+  /** Provider-specific options passed verbatim to the LLM API (effort, reasoning_effort, top_p, etc.). */
+  options?: Record<string, unknown>;
 }
 
 /** Configuration for a single LLM provider including auth, model, and rate-limit settings. */

@@ -41,6 +41,13 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     }))
   );
 
+  // Find model-specific options from config (effort, reasoning_effort, etc.)
+  const allModels = deps.config.providers.flatMap((p: any) => p.models || []);
+  const matchedModel = allModels.find((m: any) => (typeof m === 'string' ? m : m.name) === model);
+  const modelOptions = matchedModel && typeof matchedModel === 'object' && !Array.isArray(matchedModel)
+    ? (matchedModel as any).options ?? {}
+    : {};
+
   const workerMaxTurns = deps.config.session?.workerMaxTurns ?? 250;
   const workerUiTimers = new Map<string, NodeJS.Timeout>();
   const a2aResult = createA2ATools({
@@ -225,7 +232,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     model,
     providerType: provType,
     providerName: ctx.providerName,
-    thinking: { enabled: true, budgetTokens: 10000 },
+    modelOptions,
     tools: [
       ...getDefaultTools({
         onWriteComplete: async (reason, toolName, filePath) => {

@@ -3,6 +3,11 @@
 import type { ILLMProvider } from './ProviderPool.js';
 import { logError, logWarn } from '../core/index.js';
 
+/** Safe JSON.parse — returns null on failure instead of throwing. */
+function safeParseJSON(raw: string): unknown {
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 /** Normalized message format used by the adapter layer. */
 export interface SimpleMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -110,7 +115,7 @@ export class ModelToLLMAdapter implements ILLMProvider {
             type: 'tool_call' as const,
             id: tc.id,
             name: tc.name,
-            arguments: typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments,
+            arguments: typeof tc.arguments === 'string' ? safeParseJSON(tc.arguments) : tc.arguments,
           });
         }
       }
@@ -240,7 +245,7 @@ export class ModelToLLMAdapter implements ILLMProvider {
             type: 'tool_call' as const,
             id: tc.id,
             name: tc.name,
-            arguments: typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments,
+            arguments: typeof tc.arguments === 'string' ? safeParseJSON(tc.arguments) : tc.arguments,
           });
         }
       }

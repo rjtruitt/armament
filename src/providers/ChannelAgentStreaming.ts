@@ -121,6 +121,8 @@ export interface StreamingConfig {
   maxTurns?: number;
   maxOutputTokens?: number;
   thinking?: { enabled: boolean; budgetTokens: number };
+  /** Provider-specific options passed verbatim (effort, reasoning_effort, top_p, etc.). */
+  modelOptions?: Record<string, unknown>;
   onTurnStart?: (turnNumber: number) => void;
   onTurnComplete?: (turnNumber: number, response: string) => void;
   onToolCall?: (toolName: string, args: unknown) => void;
@@ -194,6 +196,10 @@ export async function* runStreamingLoop(
         if (!options.max_tokens) {
           options.max_tokens = 16000;
         }
+      }
+      // Merge model-specific options (effort, reasoning_effort, etc.) — override defaults
+      if (config.modelOptions) {
+        Object.assign(options, config.modelOptions);
       }
       if (toolDefs.length > 0) {
         options.tools = toolDefs;

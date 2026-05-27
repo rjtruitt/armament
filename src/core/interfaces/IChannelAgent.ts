@@ -32,6 +32,8 @@ export interface IChannelAgentConfig {
   maxTurns?: number;
   maxOutputTokens?: number;
   thinking?: { enabled: boolean; budgetTokens: number };
+  /** Provider-specific options passed verbatim (effort, reasoning_effort, top_p, etc.). */
+  modelOptions?: Record<string, unknown>;
   tools?: ITool[];
   stickyNotes?: StickyNote[];
   contextWindow?: ContextWindowConfig;
