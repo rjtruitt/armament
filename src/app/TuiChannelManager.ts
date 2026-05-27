@@ -14,6 +14,17 @@ import {
   type CachedRendererState,
 } from './TuiChannelHelpers.js';
 
+/** Per-channel streaming state. */
+interface StreamState {
+  sender: string;
+  content: string;
+  contentParts: string[];
+  lineStart: number;
+  thinkingContent: string;
+  thinkingParts: string[];
+  finalized: boolean;
+}
+
 /**
  * Owns the per-channel line buffers, scroll buffers, tool blocks,
  * and streaming message state. Provides methods for appending content
@@ -30,11 +41,8 @@ export class TuiChannelManager {
   private _toolBlocks: Map<string, ToolBlock[]> = new Map();
   private _toolBlockIdCounter = 0;
 
-  /** Per-channel streaming state — each channel gets its own entry to avoid cross-channel corruption. */
-  private _streamStates: Map<string, {
-    sender: string; content: string; contentParts: string[];
-    lineStart: number; thinkingContent: string; thinkingParts: string[];
-  }> = new Map();
+  /** Per-channel streaming state. */
+  private _streamStates: Map<string, StreamState> = new Map();
 
   private _stagingMessages: Map<string, Array<{ sender: string; content: string; rendered: string[] }>> = new Map();
   private _stagingScrollOffset: Map<string, number> = new Map();
@@ -42,11 +50,12 @@ export class TuiChannelManager {
   private _rendererCache: CachedRendererState = { renderer: null, width: 0, theme: '' };
 
   /**
-   * Gets the is streaming.
+   * Whether any channel has an active stream.
    */
   get isStreaming(): boolean { return this._streamStates.size > 0; }
+
   /**
-   * Checks whether channel streaming.
+   * Check if a specific channel has an active stream.
    */
   isChannelStreaming(channel: string): boolean { return this._streamStates.has(channel); }
 
@@ -148,16 +157,21 @@ export class TuiChannelManager {
     if (!this._channelLines.has(channel)) this._channelLines.set(channel, []);
     if (!this._channelMessages.has(channel)) this._channelMessages.set(channel, []);
     const channelBuf = this._channelLines.get(channel)!;
-    this._streamStates.set(channel, { sender, content: '', contentParts: [], lineStart: channelBuf.length, thinkingContent: '', thinkingParts: [] });
+    this._streamStates.set(channel, {
+      sender, content: '', contentParts: [],
+      lineStart: channelBuf.length,
+      thinkingContent: '', thinkingParts: [],
+      finalized: false,
+    });
   }
 
   /** Append a text chunk to the current streaming message for a channel. */
   appendStreamChunk(text: string, channel: string): void {
     const state = this._streamStates.get(channel);
-    if (!state) return;
+    if (!state || state.finalized) return;
     state.contentParts.push(text);
     state.content += text;
-    this.scheduleStreamRender(channel);
+    this.renderStreamNow(channel);
   }
 
   /** Append thinking/reasoning content to the current streaming message for a channel. */
@@ -174,10 +188,7 @@ export class TuiChannelManager {
     if (!ch) return;
     const state = this._streamStates.get(ch);
     if (!state) return;
-    if (this._streamRenderTimer) {
-      clearTimeout(this._streamRenderTimer);
-      this._streamRenderTimer = null;
-    }
+    state.finalized = true;
     const { lineStart } = state;
     this._streamStates.delete(ch);
 
@@ -191,11 +202,8 @@ export class TuiChannelManager {
   /** Finalize the current streaming message for a channel (remove cursor, store as message). */
   finalizeStreamMessage(channel: string): void {
     const state = this._streamStates.get(channel);
-    if (!state) return;
-    if (this._streamRenderTimer) {
-      clearTimeout(this._streamRenderTimer);
-      this._streamRenderTimer = null;
-    }
+    if (!state || state.finalized) return;
+    state.finalized = true;
     const { sender, content, lineStart } = state;
     this._streamStates.delete(channel);
 
@@ -403,28 +411,10 @@ export class TuiChannelManager {
     this._stagingScrollOffset.delete(channel);
   }
 
-  private _streamRenderTimer: ReturnType<typeof setTimeout> | null = null;
-  private _lastStreamRender = 0;
-  private static STREAM_RENDER_INTERVAL = 100;
-
-  private scheduleStreamRender(channel: string): void {
-    const now = Date.now();
-    const elapsed = now - this._lastStreamRender;
-    if (elapsed >= TuiChannelManager.STREAM_RENDER_INTERVAL) {
-      this._lastStreamRender = now;
-      this.reRenderStream(channel);
-    } else if (!this._streamRenderTimer) {
-      this._streamRenderTimer = setTimeout(() => {
-        this._streamRenderTimer = null;
-        this._lastStreamRender = Date.now();
-        this.reRenderStream(channel);
-      }, TuiChannelManager.STREAM_RENDER_INTERVAL - elapsed);
-    }
-  }
-
-  private reRenderStream(channel: string): void {
+  /** Render the current stream content immediately (no timer). */
+  private renderStreamNow(channel: string): void {
     const state = this._streamStates.get(channel);
-    if (!state) return;
+    if (!state || state.finalized) return;
     reRenderStreamMessage(
       channel,
       state,
