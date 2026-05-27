@@ -65,6 +65,7 @@ export interface ChannelLifecycleDeps {
   calculateCost(model: string, inputTokens: number, outputTokens: number, cacheRead?: number, cacheWrite?: number): number;
   getUsageStats(): { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number; maxBudget?: number };
   updateUsageStats(input: number, output: number, total: number, cost: number): void;
+  trackModelCost(model: string, cost: number, input: number, output: number): void;
   refreshProviderStats(): void;
   getActiveToolNames(): string[];
   setActiveToolNames(names: string[]): void;

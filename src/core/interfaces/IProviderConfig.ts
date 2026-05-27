@@ -42,4 +42,6 @@ export interface IProviderConfig {
   rateLimit?: number;
   tokenLimit?: number;
   budget?: number;
+  /** Model ID used for web page summarization (e.g. "deepseek-v4-flash"). Auto-populated when first model is created. */
+  webpageSummarizationModel?: string;
 }

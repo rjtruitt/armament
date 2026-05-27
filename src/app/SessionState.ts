@@ -33,6 +33,7 @@ export interface ExitSummaryData {
   duration: string;
   tokens: string;
   cost: { current: number; budget: number };
+  costByModel: Array<{ model: string; cost: number; inputTokens: number; outputTokens: number }>;
   requestCount: number;
 }
 
@@ -49,7 +50,8 @@ export interface ISessionState {
   readonly startTime: number;
 
   incrementTurn(): number;
-  addUsage(input: number, output: number, total: number, cost: number): void;
+  addUsage(model: string, input: number, output: number, total: number, cost: number): void;
+  trackModelCost(model: string, cost: number, input: number, output: number): void;
   recordRequest(inputTokens: number, outputTokens: number): void;
   calculateCost(model: string, inputTokens: number, outputTokens: number, cacheRead?: number, cacheWrite?: number): number;
   formatTokenCount(n: number): string;
@@ -101,6 +103,7 @@ export class SessionState implements ISessionState {
   private _pricing: Record<string, { input: number; output: number; cacheReadMultiplier?: number; cacheWriteMultiplier?: number }>;
   private _contextCapacity: number;
   private _budgetWarningSent = false;
+  private _costByModel: Map<string, { cost: number; inputTokens: number; outputTokens: number }> = new Map();
 
   constructor(config: SessionConfig = {}) {
     this._contextCapacity = config.contextCapacity ?? 200000;
@@ -149,6 +152,10 @@ export class SessionState implements ISessionState {
    */
   get usageStats(): IUsageStats { return this._usageStats; }
   /**
+   * Gets the cost by model.
+   */
+  get costByModel(): Map<string, { cost: number; inputTokens: number; outputTokens: number }> { return this._costByModel; }
+  /**
    * Gets the context usage.
    */
   get contextUsage(): IContextUsage { return this._contextUsage; }
@@ -193,11 +200,27 @@ export class SessionState implements ISessionState {
   /**
    * Add usage.
    */
-  addUsage(input: number, output: number, total: number, cost: number): void {
+  addUsage(model: string, input: number, output: number, total: number, cost: number): void {
     this._usageStats.inputTokens += input;
     this._usageStats.outputTokens += output;
     this._usageStats.totalTokens += total;
     this._usageStats.estimatedCost += cost;
+    this._trackModelCostImpl(model, cost, input, output);
+  }
+
+  /**
+   * Track per-model cost without affecting global counters (used alongside direct usageStats mutation).
+   */
+  trackModelCost(model: string, cost: number, input: number, output: number): void {
+    this._trackModelCostImpl(model, cost, input, output);
+  }
+
+  private _trackModelCostImpl(model: string, cost: number, input: number, output: number): void {
+    const entry = this._costByModel.get(model) ?? { cost: 0, inputTokens: 0, outputTokens: 0 };
+    entry.cost += cost;
+    entry.inputTokens += input;
+    entry.outputTokens += output;
+    this._costByModel.set(model, entry);
   }
 
   /**
@@ -238,7 +261,9 @@ export class SessionState implements ISessionState {
    * Calculate cost.
    */
   calculateCost(model: string, inputTokens: number, outputTokens: number, cacheRead = 0, cacheWrite = 0): number {
-    const key = Object.keys(this._pricing).find(k => model.includes(k) || k.includes(model));
+    // Match longest key first to avoid partial matches (e.g. "deepseek-v4" matching "deepseek-v4-flash")
+    const keys = Object.keys(this._pricing).sort((a, b) => b.length - a.length);
+    const key = keys.find(k => model.includes(k) || k.includes(model));
     const rate = key ? this._pricing[key] : { input: 3, output: 15, cacheReadMultiplier: 0.1, cacheWriteMultiplier: 1.25 };
     const nonCachedInput = inputTokens - cacheRead - cacheWrite;
     const inputCost = nonCachedInput * rate.input;
@@ -374,10 +399,15 @@ export class SessionState implements ISessionState {
     const { duration } = this.getElapsedTime();
     const inK = Math.round(this._usageStats.inputTokens / 1000);
     const outK = Math.round(this._usageStats.outputTokens / 1000);
+    const costByModel = Array.from(this._costByModel.entries())
+      .filter(([model]) => model) // skip empty model names
+      .map(([model, data]) => ({ model, cost: data.cost, inputTokens: data.inputTokens, outputTokens: data.outputTokens }))
+      .sort((a, b) => b.cost - a.cost);
     return {
       duration,
       tokens: `${inK}k in / ${outK}k out`,
       cost: { current: this._usageStats.estimatedCost, budget },
+      costByModel,
       requestCount: this._usageStats.requestCount,
     };
   }

@@ -144,6 +144,13 @@ export function buildVisibleLines(state: SidebarRenderState): { text: string; an
           }
         }
       }
+      // Show total session cost
+      const totalCost = Array.from(state.providers).reduce((sum, p) => {
+        return sum + Array.from(p.models).reduce((msum, [, s]) => msum + (s.cost || 0), 0);
+      }, 0);
+      if (totalCost > 0) {
+        lines.push({ text: `  total cost: ${totalCost.toFixed(2)}`, ansi: '\x1b[38;2;180;180;100m' });
+      }
     }
   }
 
@@ -368,6 +375,14 @@ export function renderThemed(
         if (row < state.region.y + h) writeRow(`        ${sColor}${agLine}${r}` + pad(8 + agLine.length));
       }
     }
+  }
+  // Total session cost
+  const totalCost = Array.from(state.providers).reduce((sum, p) => {
+    return sum + Array.from(p.models).reduce((msum, [, s]) => msum + (s.cost || 0), 0);
+  }, 0);
+  if (totalCost > 0) {
+    const tcLine = `total cost: ${totalCost.toFixed(2)}`;
+    if (row < state.region.y + h) writeRow(`  ${sColor}${tcLine}${r}` + pad(8 + tcLine.length));
   }
   }
 

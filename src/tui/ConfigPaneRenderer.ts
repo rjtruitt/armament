@@ -112,8 +112,15 @@ export function handleListKey(ctx: ConfigPaneContext, key: string): boolean {
       const actions = ctx.listActions;
       if (actions.length > 0) {
         const action = actions.find(a => a.key === key);
-        if (action && rows[ctx.state.cursor] && rows[ctx.state.cursor].status !== 'inactive') {
-          ctx.onAction?.(action.key, rows[ctx.state.cursor].id, ctx.currentPanelId);
+        // Allow actions even on 'inactive' rows (e.g. pressing 'a' to add when list is empty)
+        if (action) {
+          const row = rows[ctx.state.cursor];
+          if (row && row.status !== 'inactive') {
+            ctx.onAction?.(action.key, row.id, ctx.currentPanelId);
+          } else if (action.key === 'a') {
+            // 'add' works even on inactive/empty rows
+            ctx.onAction?.(action.key, '', ctx.currentPanelId);
+          }
           return true;
         }
       }
@@ -176,6 +183,32 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
       ctx.state.detailCursor = ctx.state.detailCursor < itemCount - 1 ? ctx.state.detailCursor + 1 : 0;
       return true;
 
+    case 'arrowleft':
+    case 'arrowright': {
+      const item = allItems[ctx.state.detailCursor];
+      if (!item) return true;
+      if (item.type === 'toggle') {
+        const f = item as DetailField;
+        f.value = !f.value;
+        ctx.markDirty();
+        emitChange(ctx, f.key, f.value, activeRow);
+        return true;
+      }
+      if (item.type === 'choice') {
+        const f = item as DetailField;
+        if (f.choices && f.choices.length > 0) {
+          const idx = f.choices.findIndex(c => c.id === f.value);
+          const delta = key === 'arrowright' ? 1 : -1;
+          const next = (idx + delta + f.choices.length) % f.choices.length;
+          f.value = f.choices[next].id;
+          ctx.markDirty();
+          emitChange(ctx, f.key, f.value, activeRow);
+        }
+        return true;
+      }
+      return true;
+    }
+
     case 'enter': {
       const item = allItems[ctx.state.detailCursor];
       if (!item) return true;
@@ -199,6 +232,11 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
       if (item.type === 'text') {
         ctx.state.detailEditing = true;
         ctx.state.detailEditBuffer = String((item as DetailField).value ?? '');
+        return true;
+      }
+      // Handle action buttons (e.g. [delete], [save]) in detail view
+      if (item.type === 'action') {
+        ctx.onAction?.((item as any).key, activeRow?.id ?? '', ctx.currentPanelId);
         return true;
       }
       return true;

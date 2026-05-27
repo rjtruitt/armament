@@ -266,7 +266,7 @@ export async function* runStreamingLoop(
         } catch (parseErr: unknown) {
           logError('agent', `Failed to parse tool args for ${tc.name}: ${tc.arguments.slice(0, 100)}`, parseErr);
           const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-          const result: ToolResult = { success: false, error: { message: `Invalid JSON in tool arguments: ${errMsg}`, code: 'PARSE_ERROR' } };
+          const result: ToolResult = { success: false, error: { message: `Invalid JSON in tool arguments: ${errMsg}. Your arguments contained malformed JSON. Please retry with a properly formatted JSON object matching the tool's schema.`, code: 'PARSE_ERROR' } };
           config.onToolResult?.(tc.name, {}, result, 0);
           yield { type: 'tool_result' as const, toolName: tc.name, toolCall: tc, result, durationMs: 0 };
           toolResults.push({ tc, result });

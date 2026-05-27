@@ -301,6 +301,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     onUsage: (usage) => {
       const cost = deps.calculateCost(model, usage.input_tokens, usage.output_tokens);
       deps.updateUsageStats(usage.input_tokens, usage.output_tokens, usage.total_tokens, cost);
+      deps.trackModelCost(model, cost, usage.input_tokens, usage.output_tokens);
       deps.refreshProviderStats();
     },
     onPostCompact: async (result, _summary) => {

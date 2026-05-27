@@ -143,7 +143,10 @@ export class TuiConfigPanes {
             const newModelName = existing.some(m => (typeof m === 'string' ? m : m.name) === baseName) ? `${baseName}-${existing.length + 1}` : baseName;
             const providers = cfg.providers.map(p => {
               if ((p.name ?? p.type) === providerType) {
-                return { ...p, models: [...(p.models || []), { name: newModelName }] };
+                const updated = { ...p, models: [...(p.models || []), { name: newModelName }] };
+                // Auto-populate summaryModel if blank
+                if (!updated.webpageSummarizationModel) updated.webpageSummarizationModel = newModelName;
+                return updated;
               }
               return p;
             });
@@ -218,8 +221,8 @@ export class TuiConfigPanes {
         name: mName,
         provider: providerKey,
         context: '—',
-        costIn: '—',
-        costOut: '—',
+        costIn: typeof m === 'object' && m.inputPrice != null ? String(m.inputPrice) : '—',
+        costOut: typeof m === 'object' && m.outputPrice != null ? String(m.outputPrice) : '—',
         tpm: '—',
         rpm: '—',
         default: cfg.defaultModel === mName ? 'on' : 'off',
@@ -229,6 +232,7 @@ export class TuiConfigPanes {
         topP: String((provider as any)[`model_${mName}_topP`] ?? '1.0'),
         streaming: (provider as any)[`model_${mName}_streaming`] !== false ? 'on' : 'off',
         caching: (provider as any)[`model_${mName}_caching`] !== false ? 'on' : 'off',
+        reasoningEffort: typeof m === 'object' && m.options ? (m.options as any).reasoning_effort ?? (m.options as any).output_config?.effort ?? '' : '',
       },
       };
     });
@@ -239,18 +243,25 @@ export class TuiConfigPanes {
       fields: [
         { key: 'name', label: 'Model', width: 30, sortable: true, detailType: 'text', description: 'Model ID (e.g. deepseek-chat, gpt-4o)' },
         { key: 'context', label: 'Context', width: 8, align: 'right' as const, sortable: true, detailType: 'readonly' },
-        { key: 'costIn', label: '$/M in', width: 8, align: 'right' as const, sortable: true, detailType: 'readonly' },
-        { key: 'costOut', label: '$/M out', width: 8, align: 'right' as const, sortable: true, detailType: 'readonly' },
+        { key: 'costIn', label: '$/M in', width: 8, align: 'right' as const, sortable: true, detailType: 'text', description: 'Cost per million input tokens ($)' },
+        { key: 'costOut', label: '$/M out', width: 8, align: 'right' as const, sortable: true, detailType: 'text', description: 'Cost per million output tokens ($)' },
         { key: 'tpm', label: 'TPM', width: 7, align: 'right' as const, sortable: true, detailType: 'readonly' },
         { key: 'rpm', label: 'RPM', width: 5, align: 'right' as const, sortable: true, detailType: 'readonly' },
         { key: 'default', label: 'Default', listVisible: false, detailType: 'toggle', defaultValue: false },
         { key: 'maxTokens', label: 'Max Output', listVisible: false, detailType: 'text', defaultValue: '∞' },
         { key: 'temperature', label: 'Temperature', listVisible: false, detailType: 'text', defaultValue: '1.0' },
         { key: 'topP', label: 'Top P', listVisible: false, detailType: 'text', defaultValue: '1.0' },
+        { key: 'reasoningEffort', label: 'Reasoning Effort', listVisible: false, detailType: 'choice', choices: [
+          { id: '', label: '(default)' },
+          { id: 'low', label: 'low' },
+          { id: 'medium', label: 'medium' },
+          { id: 'high', label: 'high' },
+          { id: 'xhigh', label: 'xhigh' },
+          { id: 'max', label: 'max' },
+        ], defaultValue: '', description: 'Effort level for reasoning models (openai: low/medium/high, deepseek: low/medium/high/xhigh/max, anthropic: low/medium/high/xhigh/max)' },
       ],
       actions: [
         { key: 'a', label: 'add' },
-        { key: 'e', label: 'edit' },
         { key: 'd', label: 'delete', danger: true, bulk: true },
       ],
       rows: modelRows.length > 0 ? modelRows : [
@@ -303,6 +314,8 @@ export class TuiConfigPanes {
         if (fieldKey === 'models') return;
         const fieldMap: Record<string, string> = { authType: 'auth' };
         fieldKey = fieldMap[fieldKey] ?? fieldKey;
+        // Map summaryModel (detail view field name) to webpageSummarizationModel (config key)
+        if (fieldKey === 'summaryModel') fieldKey = 'webpageSummarizationModel';
         let coerced: any = value;
         if (value === 'on') coerced = true;
         else if (value === 'off') coerced = false;
@@ -351,6 +364,39 @@ export class TuiConfigPanes {
                 const models = (p.models || []).map(m => (typeof m === 'string' ? m : m.name) === modelId ? { ...(typeof m === 'string' ? { name: m } : m), name: coerced } : m);
                 return { ...p, models };
               }
+              if (fieldKey === 'reasoningEffort') {
+                // Store in model.options.reasoning_effort (nested object on the model)
+                const models = (p.models || []).map(m => {
+                  const mName = typeof m === 'string' ? m : m.name;
+                  if (mName !== modelId) return m;
+                  const current = typeof m === 'string' ? { name: m, options: {} } : { ...m };
+                  if (!current.options) current.options = {};
+                  if (!coerced) {
+                    delete (current.options as any).reasoning_effort;
+                    if (Object.keys(current.options).length === 0) delete current.options;
+                  } else {
+                    (current.options as any).reasoning_effort = coerced;
+                  }
+                  return current;
+                });
+                return { ...p, models };
+              }
+              if (fieldKey === 'costIn' || fieldKey === 'costOut') {
+                const priceKey = fieldKey === 'costIn' ? 'inputPrice' : 'outputPrice';
+                const numVal = coerced === '' ? undefined : Number(coerced);
+                const models = (p.models || []).map(m => {
+                  const mName = typeof m === 'string' ? m : m.name;
+                  if (mName !== modelId) return m;
+                  const current = typeof m === 'string' ? { name: m } : { ...m };
+                  if (numVal === undefined || isNaN(numVal)) {
+                    delete (current as any)[priceKey];
+                  } else {
+                    (current as any)[priceKey] = numVal;
+                  }
+                  return current;
+                });
+                return { ...p, models };
+              }
               return { ...p, [`model_${modelId}_${fieldKey}`]: coerced };
             }
             return p;
@@ -387,9 +433,10 @@ export class TuiConfigPanes {
       'session.streaming.value': 'session.streaming',
       'session.autoSave.value': 'session.autoSave',
       'session.promptCaching.value': 'session.promptCaching',
-      'session.useThreads.value': 'session.useThreads',
       'session.maxTurns.value': 'session.maxTurns',
       'session.timeout.value': 'session.conversationTimeout',
+      // Web
+      'session.braveApiKey.value': 'web.braveApiKey',
       // Session budget
       'session.budget.enabled.value': 'session.budgetEnabled',
       'session.budget.amount.value': 'session.budgetAmount',
@@ -433,6 +480,11 @@ export class TuiConfigPanes {
       else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value)) coerced = Number(value);
       else if (typeof value === 'string' && value.endsWith('m') && /^\d+m$/.test(value)) coerced = Number(value.slice(0, -1));
       cfg.setPath(cfgPath, coerced);
+      // Refresh session pane rows after change so toggled values show immediately
+      if (cfgPath.startsWith('session.') || cfgPath.startsWith('web.')) {
+        this.refreshSchemas('session');
+        this.refreshSchemas('session.budget');
+      }
     }
 
     if (cfgPath === 'display.theme') {

@@ -166,6 +166,7 @@ export interface SessionSummaryData {
   tools: string;
   tokens: string;
   cost: { current: number; budget: number };
+  costByModel?: Array<{ model: string; cost: number; inputTokens: number; outputTokens: number }>;
   files: string;
   providers: string;
   commits?: string[];
@@ -212,6 +213,16 @@ export function renderExitSummary(themeName = 'red', noColor = false, data: Sess
   lines.push(`${accent('│')}  ${label('cost:')}       ${costBar} ${value(costText)}`);
   lines.push(`${accent('│')}  ${label('files:')}      ${value(data.files)}`);
   lines.push(`${accent('│')}  ${label('providers:')}  ${value(data.providers)}`);
+
+  if (data.costByModel && data.costByModel.length > 0) {
+    lines.push(accent('│'));
+    lines.push(`${accent('│')}  ${label('by model:')}`);
+    for (const m of data.costByModel) {
+      const inK = Math.round(m.inputTokens / 1000);
+      const outK = Math.round(m.outputTokens / 1000);
+      lines.push(`${accent('│')}   ${value(m.model)}  ${dim(m.cost.toFixed(2))}  (${dim(`${inK}k in / ${outK}k out`)})`);
+    }
+  }
 
   if (data.commits && data.commits.length > 0) {
     lines.push(accent('│'));

@@ -87,7 +87,7 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
           target = target[parts[i]];
         }
         target[parts[parts.length - 1]] = value;
-        const file = path.join(homedir(), '.armament', 'mcp.json');
+        const file = path.join(homedir(), '.arma', 'mcp.json');
         fs.writeFileSync(file, JSON.stringify(configs, null, 2), 'utf8');
       }
     },
@@ -95,7 +95,7 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
     onMcpRemove: (serverName: string) => {
       deps.mcpIntegration.disconnectMcp(serverName).then(() => {
         const configs = deps.mcpIntegration.loadMcpConfig().filter(c => c.name !== serverName);
-        const file = path.join(homedir(), '.armament', 'mcp.json');
+        const file = path.join(homedir(), '.arma', 'mcp.json');
         fs.writeFileSync(file, JSON.stringify(configs, null, 2), 'utf8');
         (deps as any)._tuiRef?.writeMessage('system', 'mcp', `✓ ${serverName} removed`, '#control');
         (deps as any)._tuiRef?.rebuildMcpMenu(configs.map(e => e.name), configs);
@@ -141,7 +141,18 @@ export function configureTuiPostCreate(tui: TuiMode, deps: TuiWiringDeps): void 
   const defaultProvider = uc.providers?.[0] ?? deps.config.providers?.[0];
   const defaultModel = uc.defaultModel || deps.config.defaultModel || '';
   const defaultProviderName = defaultProvider?.name ?? defaultProvider?.type ?? defaultProvider ?? 'none';
-  tui.updateStatus({ provider: defaultProviderName as string, model: defaultModel || 'none' });
+
+  // Extract effort from model config options
+  let defaultEffort = '';
+  if (defaultModel && defaultProvider) {
+    const models = defaultProvider.models ?? [];
+    const matched = models.find((m: any) => (typeof m === 'string' ? m : m.name) === defaultModel);
+    if (matched && typeof matched === 'object' && !Array.isArray(matched)) {
+      const opts = (matched as any).options ?? {};
+      defaultEffort = opts.reasoning_effort ?? opts.output_config?.effort ?? '';
+    }
+  }
+  tui.updateStatus({ provider: defaultProviderName as string, model: defaultModel || 'none', effort: defaultEffort });
 
   if (defaultProvider && defaultModel) {
     deps.providerPool.getOrCreate(

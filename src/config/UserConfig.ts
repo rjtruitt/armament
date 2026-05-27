@@ -62,6 +62,14 @@ export interface DisplaySettings {
   renderInterval: number;
 }
 
+/** Web fetch/search settings. */
+export interface WebSettings {
+  userAgent: string;
+  cacheEnabled: boolean;
+  cacheTTL: number;
+  braveApiKey: string;
+}
+
 /** Persisted user settings. */
 export interface UserSettings {
   theme: string;
@@ -77,6 +85,7 @@ export interface UserSettings {
   context: ContextSettings;
   workspace: WorkspaceSettings;
   display: DisplaySettings;
+  web: WebSettings;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -90,7 +99,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     streaming: true,
     autoSave: true,
     promptCaching: true,
-    useThreads: false,
+    useThreads: true,
     maxTurns: 100,
     workerMaxTurns: 250,
     conversationTimeout: 60,
@@ -128,6 +137,12 @@ const DEFAULT_SETTINGS: UserSettings = {
     fontWeight: 'normal',
     lineHeight: 1.5,
     renderInterval: 33,
+  },
+  web: {
+    userAgent: 'Claude-User (armament/0.1; +https://github.com/your-repo/armament)',
+    cacheEnabled: true,
+    cacheTTL: 15,
+    braveApiKey: '',
   },
 };
 

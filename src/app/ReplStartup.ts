@@ -30,6 +30,20 @@ export async function printWelcome(deps: StartupDeps): Promise<void> {
     ? debug.getMcpServers().map(s => s.name)
     : deps.mcpIntegration.loadMcpConfig().map(c => c.name);
 
+  // Check for optional tools on this system
+  let toolsAvailable: string[] = [];
+  try {
+    const { execSync } = await import('child_process');
+    const curlCI = execSync(
+      `ls /usr/local/bin/curl_chrome* ~/.local/bin/curl_chrome* 2>/dev/null || type curl_chrome116 2>/dev/null || which curl_chrome 2>/dev/null`,
+      { encoding: 'utf-8', timeout: 2000 }
+    ).trim();
+    if (curlCI) toolsAvailable.push('curl-impersonate');
+  } catch {}
+  // Future: check for other optional tools here
+  // if (hasPython()) toolsAvailable.push('python');
+  // if (hasPlaywright()) toolsAvailable.push('playwright');
+
   const loader = new LoadingBarController({
     providers: isDebug ? debug.getProviders() : deps.config.providers.map(p => p.name ?? p.type),
     mcpServers: savedMcpNames,
@@ -108,6 +122,11 @@ export async function printWelcome(deps: StartupDeps): Promise<void> {
       result: mcpResult || 'none',
       status: (mcpOk.length > 0 ? (mcpFail.length > 0 ? 'warn' : 'ok') : 'skip') as 'ok' | 'warn' | 'skip',
     },
+    ...(toolsAvailable.length > 0 ? [{
+      label: 'extras',
+      result: toolsAvailable.join(', '),
+      status: 'ok' as const,
+    }] : []),
   ];
 
   // Run drift pruning during loading screen

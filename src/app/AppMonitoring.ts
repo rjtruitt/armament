@@ -100,7 +100,7 @@ export function buildExitSummary(deps: MonitoringDeps): string {
   const providers = config.providers.map(p => p.type).join(', ') || deps.getActiveProvider();
   return renderExitSummary(config.theme, config.noColor, {
     duration: summaryData.duration, agents, tools: `${summaryData.requestCount}`,
-    tokens: summaryData.tokens, cost: summaryData.cost, files: 'none', providers,
+    tokens: summaryData.tokens, cost: summaryData.cost, costByModel: summaryData.costByModel, files: 'none', providers,
   });
 }
 

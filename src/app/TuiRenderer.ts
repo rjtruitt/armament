@@ -435,12 +435,16 @@ export class TuiRenderer {
   /**
    * Update status.
    */
-  updateStatus(data: { provider?: string; model?: string; agents?: number; cost?: { current: number; budget: number } }): void { this.channelView.updateStatus(data); }
+  updateStatus(data: { provider?: string; model?: string; effort?: string; agents?: number; cost?: { current: number; budget: number } }): void { this.channelView.updateStatus(data); }
 
   /**
    * Rebuild mcp menu.
    */
   rebuildMcpMenu(_servers: string[], _configs?: any[]): void {
+    if (this.opts.menuConfig) {
+      this.opts.menuConfig.mcpServers = _servers;
+      this.opts.menuConfig.mcpConfigs = _configs;
+    }
   }
 
   /**

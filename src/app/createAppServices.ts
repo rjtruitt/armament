@@ -177,6 +177,7 @@ export function createAppServices(
       calculateCost: (model, input, output, cr, cw) => host.calculateCost(model, input, output, cr, cw),
       refreshProviderStats: () => host.refreshProviderStats(),
       getUsageStats: () => host.getUsageStats(),
+      trackModelCost: (model, cost, input, output) => sessionState.trackModelCost(model, cost, input, output),
     }));
   }
 
@@ -236,6 +237,7 @@ export function createAppServices(
     refreshProviderStats: () => host.refreshProviderStats(),
     getActiveToolNames: () => activeToolNames.get(),
     setActiveToolNames: (names) => { activeToolNames.set(names); },
+    trackModelCost: (model, cost, input, output) => sessionState.trackModelCost(model, cost, input, output),
   });
 
   const contextManager = new ContextManager({

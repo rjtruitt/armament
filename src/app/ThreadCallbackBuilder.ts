@@ -15,6 +15,7 @@ export interface ThreadCallbackDeps {
   calculateCost: (model: string, input: number, output: number, cacheRead?: number, cacheWrite?: number) => number;
   refreshProviderStats: () => void;
   getUsageStats: () => { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number };
+  trackModelCost: (model: string, cost: number, input: number, output: number) => void;
 }
 /** Build callback handlers for thread events (stream chunks, errors, usage, MCP tools). */
 export function buildThreadCallbacks(deps: ThreadCallbackDeps): any {
@@ -56,6 +57,7 @@ export function buildThreadCallbacks(deps: ThreadCallbackDeps): any {
       stats.outputTokens += usage.output_tokens;
       stats.totalTokens += usage.total_tokens;
       stats.estimatedCost += cost;
+      deps.trackModelCost?.(model, cost, usage.input_tokens, usage.output_tokens);
       if (provType && model) {
         const adapter = deps.getProviderPool().get(provType, model) as any;
         adapter?.addExternalUsage?.(usage.input_tokens, usage.output_tokens, cacheRead, cacheWrite);

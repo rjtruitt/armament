@@ -57,6 +57,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ansi-escapes": "^7.3.0",
     "chalk": "^5.6.2",
+    "cheerio": "^1.2.0",
     "cli-boxes": "^4.0.1",
     "commander": "^14.0.3",
     "eventemitter3": "^5.0.4",
@@ -66,6 +67,7 @@
     "inversify": "^8.1.0",
     "iteratio": "file:../iteratio",
     "iteratio-plugin-tools": "file:../iteratio-plugin-tools",
+    "lru-cache": "^11.5.1",
     "open": "^11.0.0",
     "p-retry": "^8.0.0",
     "reflect-metadata": "^0.2.2",
@@ -73,11 +75,13 @@
     "slice-ansi": "^9.0.0",
     "string-width": "^8.2.1",
     "terminal-kit": "^3.1.2",
+    "turndown": "^7.2.4",
     "wrap-ansi": "^10.0.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/turndown": "^5.0.6",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0",
     "vitest": "^3.1.0"

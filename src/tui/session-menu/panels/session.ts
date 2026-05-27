@@ -16,7 +16,6 @@ export function registerSessionPanels(panels: Map<string, MenuPanel>, config: Se
       { id: 'session.streaming', label: 'Streaming', description: 'Stream responses', type: 'toggle', value: true },
       { id: 'session.autoSave', label: 'Auto-save', description: 'Save conversation', type: 'toggle', value: true },
       { id: 'session.promptCaching', label: 'Prompt caching', description: 'Cache system prompts', type: 'toggle', value: true },
-      { id: 'session.useThreads', label: 'Worker threads', description: 'Run agents in OS threads (prevents UI lockup)', type: 'toggle', value: false },
       { id: 'session.maxTurns', label: 'Orchestrator max turns', description: '0 = infinite', type: 'text', value: '100' },
       { id: 'session.workerMaxTurns', label: 'Worker max turns', description: '0 = infinite', type: 'text', value: '250' },
       { id: 'session.conversationTimeout', label: 'Conversation timeout', description: 'Minutes', type: 'text', value: '60' },

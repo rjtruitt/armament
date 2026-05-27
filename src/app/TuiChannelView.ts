@@ -198,9 +198,10 @@ export class TuiChannelView {
   /**
    * Update status.
    */
-  updateStatus(data: { provider?: string; model?: string; agents?: number; cost?: { current: number; budget: number } }): void {
+  updateStatus(data: { provider?: string; model?: string; effort?: string; agents?: number; cost?: { current: number; budget: number } }): void {
     if (data.provider !== undefined) this.statusBar.setProvider(data.provider);
     if (data.model !== undefined) this.statusBar.setModel(data.model);
+    if (data.effort !== undefined) this.statusBar.setEffort(data.effort);
     if (data.agents !== undefined) this.statusBar.setAgents(data.agents);
     if (data.cost) this.statusBar.setCost(data.cost.current, data.cost.budget);
     this.delegate.render();

@@ -14,6 +14,7 @@ export interface StatusBarRegion {
 export interface StatusBarValues {
   provider: string;
   model: string;
+  effort?: string;
   agents: number;
   cost: { current: number; budget: number };
 }
@@ -21,6 +22,7 @@ export interface StatusBarValues {
 /** Partial data shape for bulk updates. */
 export interface StatusBarData {
   model?: string;
+  effort?: string;
   agents?: number;
   cost?: number;
   budget?: number;
@@ -38,6 +40,7 @@ export class StatusBar {
   private _region: StatusBarRegion;
   private _provider = 'none';
   private _model = 'sonnet-4';
+  private _effort = '';
   private _agents = 0;
   private _costCurrent = 0;
   private _costBudget = 5.0;
@@ -127,6 +130,14 @@ export class StatusBar {
   setModel(model: string): void {
     this._model = model;
     this.emit('model:change', { model });
+    this.scheduleRender();
+  }
+
+  /**
+   * Sets the effort level (low/medium/high/xhigh/max).
+   */
+  setEffort(effort: string): void {
+    this._effort = effort;
     this.scheduleRender();
   }
 
@@ -270,6 +281,7 @@ export class StatusBar {
     const parts: string[] = [];
     const modelStr = this._model.length > 20 ? this._model.slice(0, 17) + '...' : this._model;
     parts.push(`${labelColor}model:${valueColor}${modelStr}`);
+    if (this._effort) parts.push(`${labelColor}effort:${valueColor}${this._effort}`);
     parts.push(`${labelColor}agents:${valueColor}${this._agents}`);
 
     const costStr = `$${this._costCurrent.toFixed(2)}/$${this._costBudget.toFixed(2)}`;

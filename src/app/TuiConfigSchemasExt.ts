@@ -16,20 +16,35 @@ export function registerSessionSchemas(pane: ConfigPane): void {
       { key: 'type', label: 'Type', width: 8, detailType: 'readonly' },
       { key: 'description', label: 'Description', listVisible: false, detailType: 'readonly' },
     ],
-    actions: [
-      { key: 'r', label: 'reset defaults' },
-    ],
+    actions: [],
     rows: [
       { id: 'streaming', status: 'active', cells: { setting: 'Streaming', value: s.streaming ? 'on' : 'off', type: 'toggle' } },
       { id: 'autoSave', status: 'active', cells: { setting: 'Auto-save', value: s.autoSave ? 'on' : 'off', type: 'toggle' } },
       { id: 'promptCaching', status: 'active', cells: { setting: 'Prompt Caching', value: s.promptCaching ? 'on' : 'off', type: 'toggle' } },
-      { id: 'useThreads', status: 'active', cells: { setting: 'Use Threads', value: s.useThreads ? 'on' : 'off', type: 'toggle' } },
       { id: 'maxTurns', status: 'active', cells: { setting: 'Max Turns', value: String(s.maxTurns), type: 'number' } },
       { id: 'timeout', status: 'active', cells: { setting: 'Conversation Timeout', value: `${s.conversationTimeout}m`, type: 'text' } },
+      { id: 'braveApiKey', status: 'active', cells: { setting: 'Brave API Key', value: cfg.getPath('web.braveApiKey') ?? '', type: 'text', description: 'API key for Brave search engine (set via web.braveApiKey in config)' } },
     ],
     sortColumn: 'setting',
     sortAsc: true,
     multiSelect: false,
+  });
+
+  // Custom detail config: uses row's 'type' cell to decide field type
+  pane.registerDetailConfig('session', (row) => {
+    const rowType = row.cells['type'] || 'text';
+    const cellVal = row.cells['value'];
+    const rowDesc = row.cells['description'] || '';
+    const isToggle = rowType === 'toggle';
+    const value = isToggle
+      ? (cellVal === 'on' ? true : false)
+      : (cellVal ?? '');
+    return {
+      fields: [
+        { key: 'setting', label: 'Setting', type: 'readonly', value: row.cells['setting'] ?? '' },
+        { key: 'value', label: 'Value', type: isToggle ? 'toggle' : 'text', value, description: rowDesc },
+      ],
+    };
   });
 
   registerSchema(pane, 'session.budget', {
@@ -65,10 +80,7 @@ export function registerContextSchemas(pane: ConfigPane): void {
       { key: 'value', label: 'Value', width: 14, detailType: 'text' },
       { key: 'description', label: 'Description', listVisible: false, detailType: 'readonly' },
     ],
-    actions: [
-      { key: 'c', label: 'compact now' },
-      { key: 'r', label: 'reset defaults' },
-    ],
+    actions: [],
     rows: [
       { id: 'maxTokens', status: 'active', cells: { setting: 'Max Tokens', value: String(c.maxTokens) } },
       { id: 'compactThreshold', status: 'active', cells: { setting: 'Compact Threshold', value: String(c.compactThreshold) } },
@@ -97,9 +109,7 @@ export function registerWorkspaceSchemas(pane: ConfigPane): void {
       { key: 'value', label: 'Value', width: 20, detailType: 'text' },
       { key: 'description', label: 'Description', listVisible: false, detailType: 'readonly' },
     ],
-    actions: [
-      { key: 'r', label: 'reset defaults' },
-    ],
+    actions: [],
     rows: [
       { id: 'mode', status: 'active', cells: { setting: 'Mode', value: w.mode } },
       { id: 'allowedPaths', status: 'active', cells: { setting: 'Allowed Paths', value: w.allowedPaths.join(', ') } },
@@ -129,9 +139,7 @@ export function registerDisplaySchemas(pane: ConfigPane): void {
       { key: 'value', label: 'Value', width: 14, detailType: 'text' },
       { key: 'description', label: 'Description', listVisible: false, detailType: 'readonly' },
     ],
-    actions: [
-      { key: 'p', label: 'preview theme' },
-    ],
+    actions: [],
     rows: [
       { id: 'theme', status: 'active', cells: { setting: 'Theme', value: d.theme } },
       { id: 'showThinking', status: 'active', cells: { setting: 'Show Thinking', value: d.showThinking ? 'on' : 'off' } },

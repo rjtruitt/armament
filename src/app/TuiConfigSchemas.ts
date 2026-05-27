@@ -106,11 +106,7 @@ function registerSchedulerSchemas(pane: ConfigPane): void {
       { key: 'filter', label: 'Filter', listVisible: false, detailType: 'text', description: 'Regex or jq expression to filter events' },
       { key: 'debounce', label: 'Debounce (s)', listVisible: false, detailType: 'text', defaultValue: '0', description: 'Ignore duplicate fires within window' },
     ],
-    actions: [
-      { key: 'a', label: 'add' },
-      { key: 't', label: 'test' },
-      { key: 'd', label: 'delete', danger: true, bulk: true },
-    ],
+    actions: [],
     rows: [], // triggers loaded dynamically from scheduler state
     sortColumn: 'name',
     sortAsc: true,
@@ -126,9 +122,7 @@ function registerSchedulerSchemas(pane: ConfigPane): void {
       { key: 'scope', label: 'Scope', width: 10, detailType: 'choice', choices: [{ id: 'global', label: 'Global' }, { id: 'workflow', label: 'Per-workflow' }] },
       { key: 'description', label: 'Description', listVisible: false, detailType: 'readonly' },
     ],
-    actions: [
-      { key: 'r', label: 'reset' },
-    ],
+    actions: [],
     rows: [
       { id: 'def-provider', status: 'active', cells: { setting: 'Default Provider', value: cfg.defaultProvider ?? '(not set)', scope: 'global' } },
       { id: 'def-model', status: 'active', cells: { setting: 'Default Model', value: cfg.defaultModel ?? '(not set)', scope: 'global' } },
@@ -190,7 +184,6 @@ function registerMcpSchemas(pane: ConfigPane, mcpConfigs: Array<{ name: string; 
     actions: [
       { key: 'a', label: 'add' },
       { key: 'r', label: 'restart' },
-      { key: 'x', label: 'disconnect' },
       { key: 'd', label: 'delete', danger: true, bulk: true },
     ],
     rows: mcpRows.length > 0 ? mcpRows : [
@@ -227,6 +220,7 @@ function registerProviderSchemas(pane: ConfigPane): void {
       rateLimit: p.rateLimit != null ? String(p.rateLimit) : '∞',
       tokenLimit: p.tokenLimit != null ? String(p.tokenLimit) : '∞',
       budget: p.budget != null ? String(p.budget) : '∞',
+      summaryModel: p.webpageSummarizationModel ?? '',
     },
   }));
   registerSchema(pane, 'providers', {
@@ -251,6 +245,7 @@ function registerProviderSchemas(pane: ConfigPane): void {
       { key: 'rateLimit', label: 'Rate Limit (RPM)', listVisible: false, detailType: 'text', defaultValue: '∞', description: 'Requests per minute (∞ = unlimited)' },
       { key: 'tokenLimit', label: 'Token Limit (TPM)', listVisible: false, detailType: 'text', defaultValue: '∞', description: 'Tokens per minute (∞ = unlimited)' },
       { key: 'budget', label: 'Budget', listVisible: false, detailType: 'text', defaultValue: '∞', description: 'Spend cap per session ($)' },
+      { key: 'summaryModel', label: 'Summary Model', listVisible: false, detailType: 'text', description: 'Model used for web page summarization (use left/right arrow to cycle through available models in detail view)' },
     ],
     actions: [
       { key: 'a', label: 'add' },
@@ -265,6 +260,39 @@ function registerProviderSchemas(pane: ConfigPane): void {
     sortColumn: 'name',
     sortAsc: true,
     multiSelect: false,
+  });
+
+  // Override detail config: summaryModel becomes a choice listing the provider's models
+  pane.registerDetailConfig('providers', (row) => {
+    const cfg = UserConfig.instance();
+    const providerName = row.cells['name'] || '';
+    const provider = cfg.providers.find(p => (p.name ?? p.type) === providerName);
+    const models = provider?.models ?? [];
+    const modelChoices = models.length > 0
+      ? models.map(m => ({ id: typeof m === 'string' ? m : m.name, label: typeof m === 'string' ? m : m.name }))
+      : [{ id: '', label: '(no models)' }];
+    const currentSummary = provider?.webpageSummarizationModel ?? '';
+    return {
+      fields: [
+        { key: 'name', label: 'Provider', type: 'text', value: row.cells['name'] ?? '' },
+        { key: 'type', label: 'Type', type: 'choice', value: row.cells['type'] ?? 'openai',
+          choices: [{ id: 'bedrock', label: 'Bedrock' }, { id: 'openai', label: 'OpenAI' }, { id: 'anthropic', label: 'Anthropic' }, { id: 'gemini', label: 'Gemini' }, { id: 'ollama', label: 'Ollama' }] },
+        { key: 'authType', label: 'Auth Type', type: 'choice', value: row.cells['authType'] ?? 'api_key',
+          choices: [{ id: 'api_key', label: 'API Key' }, { id: 'profile', label: 'AWS Profile' }, { id: 'role', label: 'IAM Role' }, { id: 'oauth', label: 'OAuth' }] },
+        { key: 'apiKey', label: 'API Key', type: 'text', value: row.cells['apiKey'] ?? '' },
+        { key: 'profile', label: 'AWS Profile', type: 'text', value: row.cells['profile'] ?? '' },
+        { key: 'region', label: 'Region', type: 'choice', value: row.cells['region'] ?? 'us-east-1',
+          choices: [{ id: 'us-east-1', label: 'us-east-1' }, { id: 'us-west-2', label: 'us-west-2' }, { id: 'eu-west-1', label: 'eu-west-1' }, { id: 'eu-central-1', label: 'eu-central-1' }, { id: 'ap-northeast-1', label: 'ap-northeast-1' }] },
+        { key: 'baseUrl', label: 'Base URL', type: 'text', value: row.cells['baseUrl'] ?? '' },
+        { key: 'enabled', label: 'Enabled', type: 'toggle', value: row.cells['enabled'] === 'on' },
+        { key: 'streaming', label: 'Streaming', type: 'toggle', value: row.cells['streaming'] === 'on' },
+        { key: 'rateLimit', label: 'Rate Limit (RPM)', type: 'text', value: row.cells['rateLimit'] ?? '∞' },
+        { key: 'tokenLimit', label: 'Token Limit (TPM)', type: 'text', value: row.cells['tokenLimit'] ?? '∞' },
+        { key: 'budget', label: 'Budget', type: 'text', value: row.cells['budget'] ?? '∞' },
+        { key: 'summaryModel', label: 'Summary Model', type: 'choice', value: currentSummary || (modelChoices.length > 0 ? modelChoices[0].id : ''), choices: modelChoices,
+          description: 'Model used for web page summarization (left/right arrow to cycle)' },
+      ],
+    };
   });
 }
 
