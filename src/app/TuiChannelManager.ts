@@ -188,6 +188,7 @@ export class TuiChannelManager {
     if (!ch) return;
     const state = this._streamStates.get(ch);
     if (!state) return;
+    this.flushRender(ch);
     state.finalized = true;
     const { lineStart } = state;
     this._streamStates.delete(ch);
@@ -203,6 +204,7 @@ export class TuiChannelManager {
   finalizeStreamMessage(channel: string): void {
     const state = this._streamStates.get(channel);
     if (!state || state.finalized) return;
+    this.flushRender(channel);
     state.finalized = true;
     const { sender, content, lineStart } = state;
     this._streamStates.delete(channel);
@@ -402,6 +404,7 @@ export class TuiChannelManager {
 
   /** Delete channel data when a channel is removed. */
   removeChannel(channel: string): void {
+    this.flushRender(channel);
     this._channelMessages.delete(channel);
     this._channelLines.delete(channel);
     this._scrollBuffers.delete(channel);
@@ -411,19 +414,38 @@ export class TuiChannelManager {
     this._stagingScrollOffset.delete(channel);
   }
 
-  /** Render the current stream content immediately (no timer). */
+  /** Per-channel render timers — each channel gets its own to avoid cross-channel races. */
+  private _renderTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private static RENDER_INTERVAL = 50;
+
+  /** Schedule a render for a channel (debounced per-channel). */
   private renderStreamNow(channel: string): void {
-    const state = this._streamStates.get(channel);
-    if (!state || state.finalized) return;
-    reRenderStreamMessage(
-      channel,
-      state,
-      this._channelLines,
-      this._scrollBuffers,
-      this.layout,
-      this._rendererCache,
-      this.opts,
-      (ch) => this.getScrollBuffer(ch),
-    );
+    const existing = this._renderTimers.get(channel);
+    if (existing) return; // already queued
+
+    this._renderTimers.set(channel, setTimeout(() => {
+      this._renderTimers.delete(channel);
+      const state = this._streamStates.get(channel);
+      if (!state || state.finalized) return;
+      reRenderStreamMessage(
+        channel,
+        state,
+        this._channelLines,
+        this._scrollBuffers,
+        this.layout,
+        this._rendererCache,
+        this.opts,
+        (ch) => this.getScrollBuffer(ch),
+      );
+    }, TuiChannelManager.RENDER_INTERVAL));
+  }
+
+  /** Flush any pending render timer for a channel (used before finalize/cancel). */
+  private flushRender(channel: string): void {
+    const timer = this._renderTimers.get(channel);
+    if (timer) {
+      clearTimeout(timer);
+      this._renderTimers.delete(channel);
+    }
   }
 }
