@@ -209,6 +209,7 @@ export function createAppServices(
         host.getTui()?.writeToolBlock(toolName, argsStr, result, durationMs, channel),
       getChannelMessages: (channel) => host.getTui()?.getChannelMessages(channel) ?? [],
       resumeAgent: (channel) => host.resumeAgentTurn(channel),
+      trimChannelBuffer: (channel, summary, keepCount) => host.getTui()?.trimChannelBuffer(channel, summary, keepCount),
     },
     calculateCost: (model, input, output) => host.calculateCost(model, input, output),
     getUsageStats: () => ({ ...host.getUsageStats(), maxBudget: config.maxBudget }),

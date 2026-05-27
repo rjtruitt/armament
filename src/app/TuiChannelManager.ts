@@ -402,6 +402,43 @@ export class TuiChannelManager {
     return flushed;
   }
 
+  /** Trim channel buffer: keep system messages + last N non-system, insert summary at start. */
+  trimChannelBuffer(channel: string, summary: string, keepCount: number): void {
+    this.flushRender(channel);
+    this._streamStates.delete(channel);
+    this._toolBlocks.delete(channel);
+
+    const msgs = this._channelMessages.get(channel);
+    if (!msgs || msgs.length === 0) return;
+
+    const systemMsgs = msgs.filter(m => m.type === 'system');
+    const nonSystem = msgs.filter(m => m.type !== 'system');
+    const kept = nonSystem.slice(-keepCount);
+    const summaryMsg: ChatMessage = { type: 'system', sender: '*', content: `[Compacted — ${summary}]`, timestamp: new Date() };
+    this._channelMessages.set(channel, [summaryMsg, ...systemMsgs, ...kept]);
+
+    // Rebuild lines from trimmed messages
+    const layoutInfo = this.layout.getLayout();
+    const chatWidth = layoutInfo.main.width - 2;
+    const renderer = createIrcChatRenderer({
+      width: chatWidth,
+      noColor: this.opts.noColor,
+      theme: this.opts.theme ?? 'red',
+      indent: 0,
+    });
+    const rendered: string[] = [];
+    for (const msg of this._channelMessages.get(channel)!) {
+      const lines = renderer.renderMessage(msg);
+      rendered.push(...lines);
+    }
+    this._channelLines.set(channel, rendered);
+
+    const scrollBuf = this.getScrollBuffer(channel);
+    const mainHeight = layoutInfo.main.height - 2;
+    scrollBuf.resize(chatWidth, mainHeight);
+    scrollBuf.setLines(rendered);
+  }
+
   /** Delete channel data when a channel is removed. */
   removeChannel(channel: string): void {
     this.flushRender(channel);

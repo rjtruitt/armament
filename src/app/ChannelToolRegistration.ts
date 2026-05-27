@@ -322,6 +322,12 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
           deps.callbacks.writeMessage('system', '*', `  ${prefix} file: ${f.path}`, chName);
         }
       }
+      // Also trim the in-memory TUI buffer
+      try {
+        deps.callbacks.trimChannelBuffer(chName, result.summary ?? '', 20);
+      } catch (_e) {
+        // best-effort
+      }
       // Replace compacted messages in persisted state with the compaction summary
       try {
         const fs = require('node:fs');

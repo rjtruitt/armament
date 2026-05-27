@@ -47,6 +47,8 @@ export interface ChannelLifecycleCallbacks {
   getChannelMessages(channel: string | undefined): Array<{ type: any; sender: string; content: string; timestamp: Date }>;
   beginStreamMessage?(nick: string, channel: string): void;
   resumeAgent?(channel: string): void;
+  /** Trim channel buffer to keep system messages + last N non-system messages. */
+  trimChannelBuffer(channel: string, summary: string, keepCount: number): void;
 }
 
 /**

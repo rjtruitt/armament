@@ -343,6 +343,14 @@ export class TuiChannelView {
   }
 
   /**
+   * Trim channel buffer: keep system messages + last N non-system.
+   */
+  trimChannelBuffer(channel: string, summary: string, keepCount: number): void {
+    this.channelManager.trimChannelBuffer(channel, summary, keepCount);
+    if (channel === this.getActiveChannel()) this.delegate.render();
+  }
+
+  /**
    * Begin tool block.
    */
   beginToolBlock(toolName: string, description: string, channel?: string): number {
