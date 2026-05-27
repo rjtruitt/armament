@@ -6,8 +6,10 @@ Thumbs.db
 config.json
 armament
 .armament/
-.arma/sessions/
-.arma/.drift/
+.arma/
+!.arma/core-notes.md
+!.arma/core-architecture-index.md
+!.arma/core-architecture-drift.md
 *.arma.context
 .env
 .env.*
@@ -23,13 +25,10 @@ coverage/
 .cache/
 .aider*
 
-# Documentation - only track README, CHANGELOG, LICENSE, and docs/ folder
+# Docs — only track specific ones
 *.md
 !README.md
 !CHANGELOG.md
 !LICENSE
 !docs/*.md
-!.arma/core-notes.md
-!.arma/core-architecture-index.md
-!.arma/core-architecture-drift.md
 .armaws/

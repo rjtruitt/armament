@@ -1,3 +1,0 @@
-This is a test file created to test the drift system!
-Created in channel: #whats_up
-Timestamp: testing the snapshot and merge workflow
