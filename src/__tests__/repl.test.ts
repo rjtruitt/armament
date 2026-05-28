@@ -11,6 +11,12 @@ beforeAll(() => {
   uc.set('defaultProvider', '');
 });
 
+// ── Mock fs write — prevent tests from writing to real filesystem ──────────
+vi.mock('node:fs', async () => {
+  const actual: any = await vi.importActual('node:fs');
+  return { ...actual, writeFileSync: vi.fn() };
+});
+
 // ── Mock readline ────────────────────────────────────────────────────────────
 vi.mock('node:readline', () => ({
   createInterface: vi.fn(() => {
