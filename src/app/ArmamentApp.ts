@@ -235,6 +235,7 @@ export class ArmamentApp extends ReplPublicAPI {
       setActiveToolNames: (names) => { this._activeToolNames = names; },
       setActiveChannel: (name) => { this.activeChannelName = name; },
       getActiveChannel: () => this.activeChannelName,
+      getChannelAgent: (channel: string) => this._channelLifecycle?.getChannelAgents().get(channel),
       resumeChannel: (entry, state) => this._resumeChannel(entry, state),
       handleInput: (text) => this.handleInput(text),
       stop: () => this.stop(),

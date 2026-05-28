@@ -16,6 +16,7 @@ export interface ThreadCallbackDeps {
   refreshProviderStats: () => void;
   getUsageStats: () => { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number };
   trackModelCost: (model: string, cost: number, input: number, output: number) => void;
+  persistChannelState: (channel: string) => void;
 }
 /** Build callback handlers for thread events (stream chunks, errors, usage, MCP tools). */
 export function buildThreadCallbacks(deps: ThreadCallbackDeps): any {
@@ -71,6 +72,9 @@ export function buildThreadCallbacks(deps: ThreadCallbackDeps): any {
         const msg = err instanceof Error ? err.message : String(err);
         deps.getThreadCoordinator()?.respondMcpTool(channel, requestId, { success: false, error: { message: msg, code: 'MCP_ERROR' } });
       });
+    },
+    onSessionDirty: (channel: string) => {
+      deps.persistChannelState(channel);
     },
     onThreadDied: (channel: string) => {
       logError('repl', `Thread died: ${channel}`);

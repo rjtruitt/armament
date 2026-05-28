@@ -4,7 +4,8 @@ import { homedir } from 'node:os';
 import { UserConfig } from '../config/index.js';
 import { logInfo, type IReplConfig } from '../core/index.js';
 import { TuiRenderer as TuiMode } from './TuiRenderer.js';
-import type { ProviderPool, CatalogManager, AskUserHandler } from '../providers/index.js';
+import type { ProviderPool, CatalogManager, AskUserHandler, ChannelAgent } from '../providers/index.js';
+import type { ITool } from 'iteratio';
 import type { McpIntegration } from './McpIntegration.js';
 import type { McpServer } from './McpManager.js';
 import type { SessionPersistence, IChannelManifestEntry, IChannelStateFile } from '../session/index.js';
@@ -31,6 +32,7 @@ export interface TuiWiringDeps {
   setActiveToolNames: (names: string[]) => void;
   setActiveChannel: (name: string) => void;
   getActiveChannel: () => string | undefined;
+  getChannelAgent: (channel: string) => ChannelAgent | undefined;
   resumeChannel: (entry: IChannelManifestEntry, state: IChannelStateFile) => Promise<void>;
   handleInput: (text: string) => Promise<void>;
   stop: () => void;
@@ -246,11 +248,19 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
         return typeof n === 'string' ? { text: n, position: 'top' } : n;
       });
     }
+    let restoredTools: ITool[] = [];
     if (manifest.activeTools) {
-      deps.catalogManager.restoreTools(manifest.activeTools);
+      restoredTools = deps.catalogManager.restoreTools(manifest.activeTools);
       deps.setActiveToolNames(deps.catalogManager.activeToolNames);
     }
     for (const ch of manifest.channels) {
+      // Register restored tools on this channel's agent
+      if (restoredTools.length > 0) {
+        const agent = deps.getChannelAgent(ch.name);
+        if (agent && typeof (agent as any).registerTools === 'function') {
+          (agent as any).registerTools(restoredTools);
+        }
+      }
       const state = await deps.sessionPersistence.loadChannelState(ch.name);
       if (state) {
         await deps.resumeChannel(ch, state);

@@ -178,6 +178,7 @@ export function createAppServices(
       refreshProviderStats: () => host.refreshProviderStats(),
       getUsageStats: () => host.getUsageStats(),
       trackModelCost: (model, cost, input, output) => sessionState.trackModelCost(model, cost, input, output),
+      persistChannelState: (channel) => channelLifecycle.persistChannelState(channel),
     }));
   }
 
