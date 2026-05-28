@@ -6,6 +6,7 @@ import type { ITool, ToolResult } from 'iteratio';
 import type { ILLMProvider as IIteratioLLMProvider, IMessageManager, ContextWindowConfig, ContextUsage, RewindSnapshot, CompactionResult, MessageManagerState } from 'iteratio';
 import type { ILLMProvider, IChannelAgent, IChannelAgentConfig, StickyNote, StickyPosition } from '../core/index.js';
 import { extractNick } from './ProviderPool.js';
+import { UserConfig } from '../config/index.js';
 import { runStreamingLoop, sanitizeOrphanedToolCalls } from './ChannelAgentStreaming.js';
 import type { StreamEvent } from './ChannelAgentStreaming.js';
 
@@ -30,8 +31,7 @@ export class ChannelAgent implements IChannelAgent {
   private _recentFiles: Map<string, { timestamp: number; lines: number }> = new Map();
   private _stickyNotes: StickyNote[] = [];
   private _injectedMessages: string[] = [];
-  private _toolFailCounts: Map<string, number> = new Map();
-  private static readonly MAX_TOOL_FAILURES = 5;
+  private _toolFailCounts: Map<string, { count: number; lastFailure: number }> = new Map();
   private static readonly MAX_RECENT_FILES = 10;
 
   constructor(config: ChannelAgentConfig) {
@@ -53,9 +53,9 @@ export class ChannelAgent implements IChannelAgent {
     }
 
     builder.withContextWindow(config.contextWindow ?? {
-      maxTokens: 200_000,
-      compactThreshold: 0.75,
-      recentMessagesToKeep: 12,
+      maxTokens: UserConfig.instance().settings.context.maxTokens ?? 200_000,
+      compactThreshold: UserConfig.instance().settings.context.compactThreshold ?? 0.75,
+      recentMessagesToKeep: UserConfig.instance().settings.context.recentMessages ?? 12,
       summaryTargetRatio: 0.15,
     });
 

@@ -90,7 +90,6 @@ export function registerContextSchemas(pane: ConfigPane): void {
       { id: 'compactThreshold', status: 'active', cells: { setting: 'Compact Threshold', value: String(c.compactThreshold) } },
       { id: 'recentMessages', status: 'active', cells: { setting: 'Recent Messages to Keep', value: String(c.recentMessages) } },
       { id: 'maxSnapshots', status: 'active', cells: { setting: 'Max Snapshots', value: String(c.maxSnapshots) } },
-      { id: 'autoCompact', status: 'active', cells: { setting: 'Auto-compact', value: c.autoCompact ? 'on' : 'off' } },
       { id: 'strategy', status: 'active', cells: { setting: 'Compaction Strategy', value: c.strategy } },
     ],
     sortColumn: 'setting',
@@ -149,7 +148,7 @@ export function registerDisplaySchemas(pane: ConfigPane): void {
       { id: 'showThinking', status: 'active', cells: { setting: 'Show Thinking', value: d.showThinking ? 'on' : 'off' } },
       { id: 'showToolCalls', status: 'active', cells: { setting: 'Show Tool Calls', value: d.showToolCalls ? 'on' : 'off' } },
       { id: 'compact', status: 'active', cells: { setting: 'Compact Mode', value: d.compact ? 'on' : 'off' } },
-      { id: 'verbose', status: 'active', cells: { setting: 'Verbose', value: d.verbose ? 'on' : 'off' } },
+      { id: 'showAgentHeader', status: 'active', cells: { setting: 'Show Agent Header', value: UserConfig.instance().settings.session.showAgentHeader ? 'on' : 'off', type: 'toggle', description: 'Show agent name/timestamp header (off = minimal, no header)' } },
       { id: 'timestamps', status: 'active', cells: { setting: 'Timestamps', value: d.timestamps ? 'on' : 'off' } },
       { id: 'syntaxHighlighting', status: 'active', cells: { setting: 'Syntax Highlighting', value: d.syntaxHighlighting ? 'on' : 'off' } },
       { id: 'maxOutputLines', status: 'active', cells: { setting: 'Max Output Lines', value: String(d.maxOutputLines) } },
@@ -158,6 +157,23 @@ export function registerDisplaySchemas(pane: ConfigPane): void {
     sortColumn: 'setting',
     sortAsc: true,
     multiSelect: false,
+  });
+
+  // Detail config for display — reads type cell to render toggles properly
+  pane.registerDetailConfig('display', (row) => {
+    const rowType = row.cells['type'] || 'text';
+    const cellVal = row.cells['value'];
+    const rowDesc = row.cells['description'] || '';
+    const isToggle = rowType === 'toggle';
+    const value = isToggle
+      ? (cellVal === 'on' ? true : false)
+      : (cellVal ?? '');
+    return {
+      fields: [
+        { key: 'setting', label: 'Setting', type: 'readonly', value: row.cells['setting'] ?? '' },
+        { key: 'value', label: 'Value', type: isToggle ? 'toggle' : 'text', value, description: rowDesc },
+      ],
+    };
   });
 
   registerSchema(pane, 'display.font', {

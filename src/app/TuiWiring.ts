@@ -44,6 +44,7 @@ export interface TuiWiringDeps {
   joinChannel: (name: string) => void;
   getChannelStatus: (channel: string) => any;
   getCommandDispatch: () => CommandDispatch | null;
+  buildCommandContext: () => import('./CommandDispatch.js').CommandContext;
 }
 
 /**
@@ -56,6 +57,7 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
     mouse: deps.config.mouse ?? true,
     showThinkingInBuffer: UserConfig.instance().settings.session.showThinkingInBuffer,
     showThinkingOverlay: UserConfig.instance().settings.session.showThinkingOverlay,
+    showAgentHeader: UserConfig.instance().settings.session.showAgentHeader,
     menuConfig: {
       providers: deps.config.providers.map((p: any) => ({
         type: p.type ?? p, models: (p.models ?? []).map((m: any) => typeof m === 'string' ? m : m.name),

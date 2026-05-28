@@ -58,7 +58,6 @@ export function registerSessionPanels(panels: Map<string, MenuPanel>, config: Se
       { id: 'context.summaryRatio', label: 'Summary target ratio', description: '0.0 - 1.0', type: 'text', value: '0.12' },
       { id: 'context.antiThrash', label: 'Anti-thrash attempts', description: 'Max compact retries', type: 'text', value: '3' },
       { id: 'context.maxSnapshots', label: 'Max snapshots', description: 'Context snapshots kept', type: 'text', value: '50' },
-      { id: 'context.autoCompact', label: 'Auto-compact', description: 'Compact on threshold', type: 'toggle', value: true },
       {
         id: 'context.strategy', label: 'Compaction strategy', type: 'choice', value: 'summary',
         choices: [

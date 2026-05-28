@@ -48,6 +48,7 @@ interface ChatRendererConfig {
   noColor?: boolean;
   theme?: string;
   indent?: number;
+  showAgentHeader?: boolean;
 }
 
 function formatTime(d: Date): string {
@@ -76,7 +77,7 @@ function statusIcon(status: string): string {
 
 /** Create an IRC-style chat renderer with gradient theming and markdown support. */
 export function createIrcChatRenderer(config: ChatRendererConfig) {
-  const { width, noColor = false, theme: themeName = 'red', indent = 0 } = config;
+  const { width, noColor = false, theme: themeName = 'red', indent = 0, showAgentHeader = true } = config;
   const theme: ThemeColors = THEMES[themeName] ?? THEMES.red;
   const indentStr = ' '.repeat(indent);
 
@@ -129,7 +130,7 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
     const chars: string[] = [];
     for (let i = 0; i < barWidth; i++) {
       const t = barWidth === 1 ? 0.5 : i / (barWidth - 1);
-      const d = Math.min(t, 1 - t) * 2; // 0 at edges, 1 at center
+      const d = Math.min(t, 1 - t) * 2;
       const [r, g, b] = interpolate(theme.barStops, d);
       let ch: string;
       if (i === mid) ch = '◆';
@@ -148,14 +149,28 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
       const time = formatTime(msg.timestamp);
       const timeStr = noColor ? time : `${fgRgb(160, 160, 160)}${time}${RESET}`;
       const sender = coloredSender(msg.type, msg.sender);
+      const rst = noColor ? '' : RESET;
 
       if (msg.type === 'agent') {
+        if (!showAgentHeader) {
+          // Minimal: just content. No header/sender/timestamp — the thinking
+          // icon already signals the agent is speaking.
+          const contentCols = Math.max(20, width - 2 - indent);
+          const styledContent = renderMarkdown(msg.content, { noColor });
+          const contentLines = engineWrap(styledContent, contentCols);
+          const output: string[] = [''];
+          for (const line of contentLines) {
+            output.push(`${indentStr}  ${line}${rst}`);
+          }
+          return output;
+        }
+
+        // Original format: header with timestamp, sender, gradient tail
         const contentPad = 4;
         const contentCols = Math.max(20, width - contentPad - indent);
         const styledContent = renderMarkdown(msg.content, { noColor });
         const contentLines = engineWrap(styledContent, contentCols);
 
-        const rst = noColor ? '' : RESET;
         const output: string[] = [''];
 
         const dimColor = noColor ? '' : fgRgb(...interpolate(theme.barStops, 0.3));
@@ -179,16 +194,27 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
         for (const line of contentLines) {
           output.push(`${indentStr}    ${line}${rst}`);
         }
-
         return output;
       }
 
-
       if (msg.type === 'user') {
-        const rst = noColor ? '' : RESET;
-        const textFg = noColor ? '' : fgRgb(220, 220, 220);
+        if (!showAgentHeader) {
+          // Minimal: dimmed thin bar prefix, no timestamp/sender
+          const textFg = noColor ? '' : fgRgb(220, 220, 220);
+          const dimColor = noColor ? '' : fgRgb(160, 160, 160);
+          const contentCols = Math.max(20, width - 2 - indent);
+          const contentLines = engineWrap(msg.content, contentCols);
+          const output: string[] = [];
+          output.push('');
+          output.push(`${indentStr}${dimColor}╷${rst}`);
+          for (const line of contentLines) {
+            output.push(`${indentStr}  ${textFg}${line}${rst}`);
+          }
+          return output;
+        }
 
-        // Gradient grey across the whole header line: ─ time sender ━═─╶·
+        // Original format: gradient header ─ time sender ━═─╶·
+        const textFg = noColor ? '' : fgRgb(220, 220, 220);
         const headerText = `─ ${time} ${msg.sender} `;
         let headerLine: string;
         if (themeName === 'pro') {
@@ -212,7 +238,7 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
           const totalLen = fullChars.length;
           headerLine = fullChars.map((ch, i) => {
             const t = i / (totalLen - 1);
-            const brightness = Math.round(70 + t * 90); // 70 → 160 fade (dark to light)
+            const brightness = Math.round(70 + t * 90);
             return `${fgRgb(brightness, brightness, brightness)}${ch}`;
           }).join('') + rst;
         }
@@ -229,6 +255,7 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
         return output;
       }
 
+      // system messages: always use original format with timestamp + sender
       const prefix = `${timeStr} ${sender} `;
       const prefixVisibleLen = time.length + 1 + msg.sender.length + 2 + 1;
 
@@ -236,7 +263,6 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
       const contentLines = engineWrap(msg.content, contentCols);
 
       const textFg = noColor ? '' : fgRgb(160, 160, 160);
-      const rst = noColor ? '' : RESET;
       const continuationPad = ' '.repeat(prefixVisibleLen);
 
       const output: string[] = [];

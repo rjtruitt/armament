@@ -55,6 +55,8 @@ export interface CommandContext {
   handlePluginCommand: (args: string[]) => void;
   injectPluginContext: (commandName: string, content: string, args: string[]) => void;
   connectMcp: (name: string, config: any) => Promise<void>;
+  /** Submit a message to the current channel as if the user typed it. */
+  submitMessage: (content: string, channel?: string) => Promise<void>;
 }
 /** Result returned by a command handler indicating whether it was handled and optional output. */
 export interface CommandResult {

@@ -31,6 +31,8 @@ export class ChannelLifecycle {
   private _recurringPrompts = new Map<string, ScheduledPrompt>();
   /** Last time each channel's agent went idle (used for HistoryScribe scheduling). */
   private _lastScribeTime = new Map<string, number>();
+  /** Per-channel scribe suppression timestamp — scribe blocked until after this time. */
+  private _scribeSuppressedUntil = new Map<string, number>();
   /** Interval handle for periodic idle checks (30s poll). */
   private _scribeCheckInterval: ReturnType<typeof setInterval> | null = null;
   /** Interval handle for timer-based scribe (optional, off by default). */
@@ -77,6 +79,9 @@ export class ChannelLifecycle {
         for (const [chName, agent] of this.channelAgents) {
           if (!chName.startsWith('#') || chName.startsWith('worker-')) continue;
           if (agent.status === 'idle') {
+            // Skip if scribe is suppressed for this channel
+            const suppressedUntil = this._scribeSuppressedUntil.get(chName);
+            if (suppressedUntil && Date.now() < suppressedUntil) continue;
             this._spawnHistoryScribeWorker(chName).catch(() => {});
           }
         }
@@ -104,15 +109,22 @@ export class ChannelLifecycle {
     for (const [chName, agent] of this.channelAgents) {
       if (!chName.startsWith('#') || chName.startsWith('worker-')) continue;
       if (agent.status === 'idle') {
+        // If scribe is suppressed (another scribe recently fired), skip
+        const suppressedUntil = this._scribeSuppressedUntil.get(chName);
+        if (suppressedUntil && Date.now() < suppressedUntil) continue;
+
         const lastIdle = this._lastScribeTime.get(chName);
         if (!lastIdle) {
           this._lastScribeTime.set(chName, Date.now());
         } else if (Date.now() - lastIdle >= delay) {
           this._lastScribeTime.delete(chName);
+          // Suppress further scribe until channel goes active again
+          this._scribeSuppressedUntil.set(chName, Infinity);
           this._spawnHistoryScribeWorker(chName).catch(() => {});
         }
       } else {
-        // Agent is busy — clear idle tracking so timer restarts when it goes idle again
+        // Agent is busy — clear scribe suppression + idle tracking so timers restart
+        this._scribeSuppressedUntil.delete(chName);
         this._lastScribeTime.delete(chName);
       }
     }
@@ -133,7 +145,7 @@ export class ChannelLifecycle {
 
     const template = readFileSync(scribePath, 'utf-8');
     const parentRoot = getChannelRoot(chName);
-    const workerId = `worker-${chName.slice(1)}-scribe-${Date.now()}`;
+    const workerId = `historyscribe-${chName.slice(1)}-${Date.now()}`;
 
     // Build channel context string — just the recent messages
     const rawMax = UserConfig.instance().settings.session.historyScribeMaxMessages;
@@ -143,7 +155,7 @@ export class ChannelLifecycle {
       .filter((m: any) => m.content && typeof m.content === 'string')
       .slice(maxMessages ? -maxMessages : undefined)
       .map((m: any) => `[${m.type}] ${m.sender}: ${m.content}`)
-      .join('\n');
+      .join('\\n');
 
     const task = template
       .replace(/\{parent-channel\}/g, chName)
@@ -169,7 +181,7 @@ export class ChannelLifecycle {
       scribeModel = scribeModelSetting.includes(':') ? scribeModelSetting.split(':')[1] : scribeModelSetting;
     }
 
-    const result = await runtime.spawnWorker(workerId, task, scribeModel, undefined, undefined, stickyNotes);
+    const result = await runtime.spawnWorker(workerId, task, scribeModel, undefined, undefined, stickyNotes, true);
     if (!result.success) return;
   }
 
@@ -335,9 +347,9 @@ export class ChannelLifecycle {
       workerMaxTurns: this.deps.config.session?.workerMaxTurns ?? 250,
       tools: [],
       contextWindow: {
-        maxTokens: this.deps.config.context?.maxTokens ?? 200_000,
-        compactThreshold: this.deps.config.context?.compactThreshold ?? 0.75,
-        recentMessagesToKeep: this.deps.config.context?.recentMessages ?? 12,
+        maxTokens: UserConfig.instance().settings.context.maxTokens ?? 200_000,
+        compactThreshold: UserConfig.instance().settings.context.compactThreshold ?? 0.75,
+        recentMessagesToKeep: UserConfig.instance().settings.context.recentMessages ?? 12,
         summaryTargetRatio: 0.15,
       },
     };
@@ -620,7 +632,10 @@ export class ChannelLifecycle {
       // Fire HistoryScribe on prune if enabled and agent is idle
       const settings = UserConfig.instance().settings.session;
       if (settings.historyScribeEnabled && settings.scribeOnPrune && agent.status === 'idle') {
-        this._spawnHistoryScribeWorker(channelName).catch(() => {});
+        const suppressedUntil = this._scribeSuppressedUntil.get(channelName);
+        if (!suppressedUntil || Date.now() >= suppressedUntil) {
+          this._spawnHistoryScribeWorker(channelName).catch(() => {});
+        }
       }
     }
 

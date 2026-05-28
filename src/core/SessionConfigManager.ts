@@ -11,7 +11,7 @@ export function createSessionConfigManager() {
     theme: 'default-cyan',
     contextWindow: {
       maxTokens: 200_000,
-      compactThreshold: 0.85,
+      compactThreshold: 0.75,
       recentMessagesToKeep: 10,
       summaryTargetRatio: 0.12,
       antiThrashAttempts: 3,

@@ -261,6 +261,7 @@ export class ArmamentApp extends ReplPublicAPI {
       joinChannel: (name) => this.joinChannel(name),
       getChannelStatus: (channel) => this._getChannelStatus(channel),
       getCommandDispatch: () => this._commandDispatch,
+      buildCommandContext: () => this._buildCommandContext(),
     };
   }
 
@@ -597,6 +598,7 @@ export class ArmamentApp extends ReplPublicAPI {
       handlePluginCommand: (args) => { this.handlePluginCommand(args); },
       injectPluginContext: (commandName, content, args) => this.injectPluginContext(commandName, content, args),
       connectMcp: (name, config) => this.connectMcp(name, config),
+      submitMessage: (content, channel) => this._processMessage(content, channel),
     };
     return buildCommandContext(host);
   }

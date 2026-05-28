@@ -140,10 +140,13 @@ export interface StreamingState {
   cacheWrite: number;
   status: 'idle' | 'thinking' | 'tool_use' | 'complete' | 'error';
   injectedMessages: string[];
-  toolFailCounts: Map<string, number>;
+  /** Per-tool failure tracking — { failCount, lastFailureMs } for time-based cooldown. */
+  toolFailCounts: Map<string, { count: number; lastFailure: number }>;
 }
 
 const MAX_TOOL_FAILURES = 5;
+/** Agent-level circuit breaker cooldown — matches the BashCircuitBreaker cooldown. */
+const TOOL_FAIL_COOLDOWN_MS = 15_000;
 
 /**
  * Runs the streaming message loop. Yields StreamEvents as the provider streams responses.
@@ -272,7 +275,13 @@ export async function* runStreamingLoop(
           toolResults.push({ tc, result });
           continue;
         }
-        const failCount = state.toolFailCounts.get(tc.name) ?? 0;
+        const failEntry = state.toolFailCounts.get(tc.name);
+        let failCount = failEntry?.count ?? 0;
+        // Reset fail count if cooldown has elapsed since last failure
+        if (failEntry && Date.now() - failEntry.lastFailure >= TOOL_FAIL_COOLDOWN_MS) {
+          failCount = 0;
+          state.toolFailCounts.delete(tc.name);
+        }
         if (failCount >= MAX_TOOL_FAILURES) {
           const result: ToolResult = { success: false, error: { message: `CIRCUIT BREAKER: "${tc.name}" has failed ${failCount} consecutive times. STOP calling this tool — your arguments are incorrect or the tool cannot complete this task. Try a different approach or report the issue.`, code: 'CIRCUIT_BREAK' } };
           config.onToolResult?.(tc.name, args, result, 0);
@@ -297,7 +306,7 @@ export async function* runStreamingLoop(
         }
         const durationMs = Date.now() - startMs;
         if (!result.success) {
-          state.toolFailCounts.set(tc.name, failCount + 1);
+          state.toolFailCounts.set(tc.name, { count: failCount + 1, lastFailure: Date.now() });
         } else {
           state.toolFailCounts.delete(tc.name);
         }

@@ -71,7 +71,7 @@ class BashCircuitBreaker {
   private consecutiveFailures = 0;
   private lastFailureTime = 0;
   private readonly threshold = 5;
-  private readonly cooldownMs = 60_000;
+  private readonly cooldownMs = 15_000;
 
   /** Check if the circuit is open (too many recent failures). */
   get isOpen(): boolean {

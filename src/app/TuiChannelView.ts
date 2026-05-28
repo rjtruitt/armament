@@ -291,6 +291,10 @@ export class TuiChannelView {
   /**
    * Begin stream message.
    */
+  isChannelStreaming(channel?: string): boolean {
+    const ch = channel ?? this.sidebar.getActive() ?? '#control';
+    return this.channelManager.isChannelStreaming(ch);
+  }
   beginStreamMessage(sender: string, channel?: string): void {
     const ch = channel ?? this.sidebar.getActive() ?? '#control';
     this.channelManager.beginStreamMessage(sender, ch);

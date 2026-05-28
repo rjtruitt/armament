@@ -15,10 +15,21 @@ import {
 } from './TuiChannelHelpers.js';
 
 /**
- * Owns the per-channel line buffers, scroll buffers, tool blocks,
- * and streaming message state. Provides methods for appending content
- * and re-rendering channels on layout changes.
+ * Strip terminal-hostile characters from text before it enters the TUI display buffer.
+ * Catches what stripAllAnsi misses:
+ *   - 8-bit C1 control codes (\€-\Ÿ) â€” interpreted as escape sequences
+ *   - Unicode formatting/control chars â€” zero-width spaces, bidirectional overrides
+ *   - ASCII control chars except \	, \
+, \
  */
+function sanitizeDisplayText(text: string): string {
+  return text
+    .replace(/[\x80-\x9F]/g, '')
+    .replace(/[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\u00AD]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
+
 export class TuiChannelManager {
   private layout: LayoutManager;
   private sidebar: Sidebar;
@@ -116,6 +127,9 @@ export class TuiChannelManager {
     this.getScrollBuffer(channel).append(...lines);
   }
 
+  /** Maximum chat messages to keep in the TUI display buffer. Older ones are pruned automatically. */
+  private static MAX_DISPLAY_MESSAGES = 500;
+
   /** Append a formatted chat message to a channel. */
   writeMessage(type: 'user' | 'agent' | 'system', sender: string, content: string, channel: string, activeChannel: string): void {
     if (!this._channelLines.has(channel)) this._channelLines.set(channel, []);
@@ -131,6 +145,7 @@ export class TuiChannelManager {
       noColor: this.opts.noColor,
       theme: this.opts.theme ?? 'red',
       indent: 0,
+      showAgentHeader: this.opts.showAgentHeader,
     });
     const rendered = renderer.renderMessage(msg);
     const channelBuf = this._channelLines.get(channel)!;
@@ -141,6 +156,9 @@ export class TuiChannelManager {
       this.sidebar.incrementUnread(channel);
     }
     this.getScrollBuffer(channel).append(...rendered);
+
+    // Auto-prune: keep only the last MAX_DISPLAY_MESSAGES chat messages
+    this._pruneChannel(channel);
   }
 
   /** Begin streaming an agent response (shows cursor). */
@@ -208,6 +226,7 @@ export class TuiChannelManager {
       noColor: this.opts.noColor,
       theme: this.opts.theme ?? 'red',
       indent: 0,
+      showAgentHeader: this.opts.showAgentHeader,
     });
 
     const msg: ChatMessage = { type: 'agent', sender, content, timestamp: new Date() };
@@ -347,6 +366,7 @@ export class TuiChannelManager {
       noColor: this.opts.noColor,
       theme: this.opts.theme ?? 'red',
       indent: 0,
+      showAgentHeader: this.opts.showAgentHeader,
     });
     const msg: ChatMessage = { type: 'user', sender, content, timestamp: new Date() };
     const rendered = renderer.renderMessage(msg);
@@ -423,6 +443,14 @@ export class TuiChannelManager {
     if (staging) staging.length = 0;
   }
 
+  /** Auto-prune old messages: keep only the last MAX_DISPLAY_MESSAGES.
+   *  Only trims _channelMessages â€” display lines and scroll buffer are untouched. */
+  private _pruneChannel(channel: string): void {
+    const msgs = this._channelMessages.get(channel);
+    if (!msgs || msgs.length <= TuiChannelManager.MAX_DISPLAY_MESSAGES) return;
+    this._channelMessages.set(channel, msgs.slice(-TuiChannelManager.MAX_DISPLAY_MESSAGES));
+  }
+
   trimChannelBuffer(channel: string, summary: string, keepCount: number): void {
     this.flushRender(channel);
     this._streamStates.delete(channel);
@@ -445,6 +473,7 @@ export class TuiChannelManager {
       noColor: this.opts.noColor,
       theme: this.opts.theme ?? 'red',
       indent: 0,
+      showAgentHeader: this.opts.showAgentHeader,
     });
     const rendered: string[] = [];
     for (const msg of this._channelMessages.get(channel)!) {

@@ -131,7 +131,6 @@ export class StreamRouter {
     bus.emit({ type: 'message', channel: target.channel, message: { role: 'user', content: input, timestamp: Date.now() } });
 
     tui?.startThinking(target.channel);
-    if (showText) tui?.beginStreamMessage(target.nick, target.channel);
 
     for await (const chunk of agent.sendMessageStreaming(input)) {
       if (interrupted?.()) break;
@@ -141,9 +140,9 @@ export class StreamRouter {
           if (!chunk.text) break;
           fullResponse += chunk.text;
           if (showText) {
-            if (inToolCall) {
+            // Begin stream on first content — not before, so no empty header if first thing is a tool
+            if (!tui?.isChannelStreaming(target.channel)) {
               tui?.beginStreamMessage(target.nick, target.channel);
-              inToolCall = false;
             }
             tui?.appendStreamChunk(chunk.text, target.channel);
           }
@@ -153,11 +152,20 @@ export class StreamRouter {
           if (!chunk.text) break;
           bus.emit({ type: 'thinking', channel: target.channel, text: chunk.text });
           if (showText) {
+            // Between tools: don't create a new message for thinking (shows in overlay only)
             if (inToolCall) {
-              tui?.beginStreamMessage(target.nick, target.channel);
-              inToolCall = false;
+              // Only create stream if there's already one (e.g. text was appended before tool completed)
+              // Otherwise skip — thinking goes to overlay
+              if (tui?.isChannelStreaming(target.channel)) {
+                tui?.appendStreamThinking(chunk.text, target.channel);
+              }
+            } else {
+              // Before first tool or after all tools — normal thinking display
+              if (!tui?.isChannelStreaming(target.channel)) {
+                tui?.beginStreamMessage(target.nick, target.channel);
+              }
+              tui?.appendStreamThinking(chunk.text, target.channel);
             }
-            tui?.appendStreamThinking(chunk.text, target.channel);
           }
           break;
 

@@ -469,6 +469,7 @@ export class TuiConfigPanes {
       'session.showThinkingInBuffer.value': 'session.showThinkingInBuffer',
       'session.showThinkingOverlay.value': 'session.showThinkingOverlay',
       'session.promptCaching.value': 'session.promptCaching',
+      'session.showAgentHeader.value': 'session.showAgentHeader',
       'session.maxTurns.value': 'session.maxTurns',
       'session.timeout.value': 'session.conversationTimeout',
       'session.historyScribeEnabled.value': 'session.historyScribeEnabled',
@@ -504,7 +505,6 @@ export class TuiConfigPanes {
       'context.compactThreshold.value': 'context.compactThreshold',
       'context.recentMessages.value': 'context.recentMessages',
       'context.maxSnapshots.value': 'context.maxSnapshots',
-      'context.autoCompact.value': 'context.autoCompact',
       'context.strategy.value': 'context.strategy',
       // Workspace
       'workspace.mode.value': 'workspace.mode',
@@ -519,7 +519,7 @@ export class TuiConfigPanes {
       'display.showThinking.value': 'display.showThinking',
       'display.showToolCalls.value': 'display.showToolCalls',
       'display.compact.value': 'display.compact',
-      'display.verbose.value': 'display.verbose',
+      'display.showAgentHeader.value': 'session.showAgentHeader',
       'display.timestamps.value': 'display.timestamps',
       'display.syntaxHighlighting.value': 'display.syntaxHighlighting',
       'display.maxOutputLines.value': 'display.maxOutputLines',
@@ -568,6 +568,10 @@ export class TuiConfigPanes {
     }
     if (cfgPath === 'session.showThinkingOverlay') {
       this.opts.showThinkingOverlay = typeof value === 'boolean' ? value : value === 'on';
+      this.delegate.render();
+    }
+    if (cfgPath === 'session.showAgentHeader') {
+      this.opts.showAgentHeader = typeof value === 'boolean' ? value : value === 'on';
       this.delegate.render();
     }
     if (cfgPath === 'display.renderInterval') {

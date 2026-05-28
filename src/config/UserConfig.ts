@@ -19,6 +19,7 @@ export interface SessionSettings {
   useThreads: boolean;
   showThinkingInBuffer: boolean;
   showThinkingOverlay: boolean;
+  showAgentHeader: boolean;
   maxTurns: number;
   workerMaxTurns: number;
   conversationTimeout: number;
@@ -42,7 +43,6 @@ export interface ContextSettings {
   compactThreshold: number;
   recentMessages: number;
   maxSnapshots: number;
-  autoCompact: boolean;
   strategy: 'summary' | 'sliding' | 'hybrid';
 }
 
@@ -115,6 +115,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     promptCaching: true,
     useThreads: true,
     showThinkingInBuffer: true,
+    showAgentHeader: true,
     showThinkingOverlay: true,
     maxTurns: 100,
     workerMaxTurns: 250,
@@ -134,10 +135,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   },
   context: {
     maxTokens: 200000,
-    compactThreshold: 0.85,
+    compactThreshold: 0.75,
     recentMessages: 10,
     maxSnapshots: 50,
-    autoCompact: true,
     strategy: 'summary',
   },
   workspace: {

@@ -61,6 +61,7 @@ export interface CommandContextHost {
   handlePluginCommand: (args: string[]) => void;
   injectPluginContext: (commandName: string, content: any, args: string[]) => void;
   connectMcp: (name: string, config: any) => Promise<void>;
+  submitMessage: (content: string, channel?: string) => Promise<void>;
 }
 /** Construct a CommandContext object bridging app internal state to the command system. */
 export function buildCommandContext(host: CommandContextHost): CommandContext {
@@ -110,5 +111,6 @@ export function buildCommandContext(host: CommandContextHost): CommandContext {
     handlePluginCommand: (args) => { host.handlePluginCommand(args); },
     injectPluginContext: (commandName, content, args) => host.injectPluginContext(commandName, content, args),
     connectMcp: (name, config) => host.connectMcp(name, config),
+    submitMessage: (content, channel) => host.submitMessage(content, channel),
   };
 }

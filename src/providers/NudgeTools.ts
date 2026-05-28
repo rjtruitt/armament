@@ -361,7 +361,7 @@ Use when waiting on external processes (CI, deploys, builds). Do NOT use to poll
       return { success: false, error: { message: `Delay too long (max 1 hour). Use set_nudge for longer intervals.`, code: 'INVALID_ARGS' } };
     }
 
-    const job = this.store.create(prompt, ms, { recurring: false });
+    const job = this.store.create(prompt, ms, { recurring: false, hidden: true });
     return { success: true, data: `Wakeup ${job.id} scheduled in ${delay}. Reason: ${reason}` };
   }
 }

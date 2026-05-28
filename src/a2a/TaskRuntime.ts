@@ -31,6 +31,7 @@ interface WorkerEntry {
   agent: IChannelAgent;
   completion: Promise<string>;
   spawnedAt: number;
+  silent?: boolean;
 }
 
 /** Manages worker lifecycle, completion delivery, and zombie detection. */
@@ -55,6 +56,7 @@ export class TaskRuntime {
     systemPrompt?: string,
     history?: Array<{ role: 'user' | 'assistant'; content: string }>,
     stickyNotes?: Array<{ content: string; position: 'top' | 'bottom' | 'both' }>,
+    silent?: boolean,
   ): Promise<{ success: boolean; workerId?: string; error?: string }> {
     const safeName = name.replace(/\s+/g, '-').toLowerCase().slice(0, 15);
     const modelConfig = model
@@ -131,7 +133,7 @@ export class TaskRuntime {
         throw err;
       });
 
-      this.workers.set(workerId, { agent: worker, completion, spawnedAt: Date.now() });
+      this.workers.set(workerId, { agent: worker, completion, spawnedAt: Date.now(), silent });
       if (!this.zombieTimer) this.startZombieDetector();
       this.config.onWorkerSpawned?.(worker);
 
@@ -164,6 +166,7 @@ export class TaskRuntime {
     if (!entry) return false;
 
     entry.completion.then((response) => {
+      if (entry?.silent) return; // background worker — no notification
       const parent = this.config.getParentAgent?.(workerId);
       if (parent) {
         parent.injectMessage(`[WORKER COMPLETE: ${workerId}]\n${response}`);

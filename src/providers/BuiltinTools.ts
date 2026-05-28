@@ -700,15 +700,15 @@ export class DeepResearchTool implements ITool {
   get description(): string {
     const base = `Do deep research on a topic: searches the web, fetches full content from all result pages, and returns a consolidated summary with source citations.\n\nUse this when you need thorough information on a topic. The tool automatically fetches and reads every result page.\n\nUsage: {\"query\": \"impact of AI on software engineering 2025\"}\n       {\"query\": \"python async patterns\", \"max_sources\": 15}`;
     if (this._canSummarize) {
-      return base + `\n       {\"query\": \"rust async\", \"summarize\": true}\n\n- query: the research topic or question\n- max_sources: max results to search and fetch (default: 10, max: 20)\n- summarize: if true, each page is LLM-summarized before returning (using web.summarizationModel)`;
+      return base + `\n       {\"query\": \"rust async\", \"summarize\": true}\n\n- query: the research topic or question\n- max_sources: max results to search and fetch (default: 10, max: 50)\n- summarize: if true, each page is LLM-summarized before returning (using web.summarizationModel)`;
     }
-    return base + `\n\n- query: the research topic or question\n- max_sources: max results to search and fetch (default: 10, max: 20)`;
+    return base + `\n\n- query: the research topic or question\n- max_sources: max results to search and fetch (default: 10, max: 50)`;
   }
 
   get schema(): z.ZodObject<any> {
     const base: Record<string, any> = {
       query: z.string().describe('The research topic or question'),
-      max_sources: z.number().optional().describe('Max sources to fetch in this batch (default: 10, max: 20)'),
+      max_sources: z.number().optional().describe('Max sources to fetch in this batch (default: 10, max: 50)'),
       offset: z.number().optional().describe('Skip this many results (for pagination — use the "remaining" count from the previous response)'),
     };
     if (this._canSummarize) {
@@ -748,7 +748,7 @@ export class DeepResearchTool implements ITool {
     const shouldSummarize = summarize && this._canSummarize;
     if (!query) return { success: false, error: { message: 'Missing "query".', code: 'INVALID_ARGS' } };
 
-    const maxSrc = Math.min(max_sources, 20);
+    const maxSrc = Math.min(max_sources, 50);
 
     let stored = offset > 0 ? loadResearchCache(query) : null;
     if (!stored) {

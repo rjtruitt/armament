@@ -117,6 +117,10 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
         logError('a2a', `Worker sandbox setup failed for ${worker.name}: ${e instanceof Error ? e.message : String(e)}`);
       }
 
+      // Background workers (scribe, etc.) don't show in sidebar or notify
+      if (worker.name.startsWith('historyscribe') || worker.name.startsWith('worker-historyscribe')) {
+        return;
+      }
       const workerLabel = worker.name.replace(/^worker-/, '').replace(/-\d+$/, '').slice(0, 15);
       deps.callbacks.addChannelChild(chName, {
         id: worker.name,
@@ -174,6 +178,8 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       }
     },
     onWorkerComplete: (workerId: string, response: string) => {
+      // Background workers — no completion messages
+      if (workerId.startsWith("worker-historyscribe") || workerId.startsWith("historyscribe")) return;
       logInfo('a2a', `Worker complete: ${workerId} (${response.length} chars)`);
       const workerNick = workerId.replace(/^worker-/, '').replace(/-\d+$/, '');
       if (response) {
@@ -208,6 +214,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       setTimeout(() => deps.callbacks.removeChannelChild(chName, workerId), 5000);
     },
     onWorkerError: (workerId: string, error: string) => {
+      if (workerId.startsWith("worker-historyscribe") || workerId.startsWith("historyscribe")) return;
       logError('a2a', `Worker error: ${workerId}`, error);
       const workerNick = workerId.replace(/^worker-/, '').replace(/-\d+$/, '');
       deps.callbacks.writeToolBlock(

@@ -121,7 +121,8 @@ export class TuiRenderer {
     this.sidebar.addSystemChannel('#logs');
     this.sidebar.addSystemChannel('#cost');
     this.inputBar.on('submit', ({ text }: { text: string }) => { this.handleSubmit(text); });
-    this.inputBar.on('complete', () => {
+    // Shared completion logic — updates the autocomplete dropdown
+    const updateCompletions = () => {
       const text = this.inputBar.getText();
       if (text.startsWith('/setroot ')) {
         const partial = text.slice('/setroot '.length);
@@ -138,10 +139,31 @@ export class TuiRenderer {
         } catch {
           this.inputBar.setCompletions([]);
         }
+      } else if (/^\/(prompt|spawn|help)\s/.test(text)) {
+        // Argument completion for known commands with getArgCompletions
+        const spaceIdx = text.indexOf(' ');
+        const cmdName = text.slice(1, spaceIdx).toLowerCase();
+        const partial = text.slice(spaceIdx + 1);
+        const dispatch = this.opts.getCommandDispatch?.();
+        const ctx = this.opts.buildCommandContext?.();
+        if (dispatch && ctx) {
+          const completions = dispatch.getArgCompletions(cmdName, partial, ctx);
+          if (completions.length > 0) {
+            this.inputBar.setCompletions(completions.map(c => `/${cmdName} ${c}`));
+          } else {
+            this.inputBar.setCompletions([]);
+          }
+        } else {
+          this.inputBar.setCompletions([]);
+        }
       } else {
         this.inputBar.setCompletions([]);
       }
-    });
+    };
+    // Auto-show completions on every keystroke
+    this.inputBar.on('text:change', updateCompletions);
+    // Also on Tab press (complete event)
+    this.inputBar.on('complete', updateCompletions);
   }
 
   /**
@@ -503,6 +525,7 @@ export class TuiRenderer {
   /**
    * Begin stream message.
    */
+  isChannelStreaming(channel?: string): boolean { return this.channelView.isChannelStreaming(channel); }
   beginStreamMessage(sender: string, channel?: string): void { this.channelView.beginStreamMessage(sender, channel); }
   trimChannelBuffer(channel: string, summary: string, keepCount: number): void { this.channelView.trimChannelBuffer(channel, summary, keepCount); }
   clearDisplay(channel: string): void { this.channelView.clearDisplay(channel); }

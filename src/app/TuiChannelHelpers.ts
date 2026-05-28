@@ -89,6 +89,7 @@ export function getStreamRenderer(
     noColor: opts.noColor,
     theme,
     indent: 0,
+      showAgentHeader: opts.showAgentHeader,
   });
   cache.width = chatWidth;
   cache.theme = theme;
@@ -154,6 +155,7 @@ export function reRenderAllChannels(
     noColor: opts.noColor,
     theme: opts.theme ?? 'red',
     indent: 0,
+      showAgentHeader: opts.showAgentHeader,
   });
 
   for (const [ch, messages] of channelMessages.entries()) {
