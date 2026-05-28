@@ -84,4 +84,12 @@ export class DriftManager implements IDriftManager {
   async readSnapshotContent(id: string): Promise<{ content: string; filePath: string; entry: DriftEntry } | null> {
     return this._store.readSnapshotContent(id);
   }
+
+  /** Grep snapshot contents for a pattern. */
+  async grepContent(pattern: string, channel?: string, filePath?: string, maxResults?: number): Promise<Array<{
+    snapshotId: string; filePath: string; channel: string; reason: string;
+    matches: Array<{ lineNumber: number; line: string }>;
+  }>> {
+    return this._store.grepContent(pattern, channel, filePath, maxResults);
+  }
 }

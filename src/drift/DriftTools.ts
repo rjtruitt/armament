@@ -151,6 +151,7 @@ export function createDriftTools(manager: DriftManager, channel: string): ITool[
     new DriftPruneTool(manager, channel),
     new DriftTreeTool(manager),
     new DriftDiffTool(manager),
+    new DriftGrepTool(manager),
   ];
 }
 
@@ -558,5 +559,65 @@ export class DriftDiffTool implements ITool {
       i = end + 1;
     }
     return hunks;
+  }
+}
+
+/** DriftGrepTool — search snapshot contents for a pattern. */
+export class DriftGrepTool implements ITool {
+  readonly name = 'drift_grep';
+  readonly description = `Search snapshot contents for a text pattern. Reads stored snapshot content (deduplicated by hash) and returns matches with snapshot IDs, file paths, and line numbers. Use --channel to scope, --file to target a specific path, --max for result limit.`;
+
+  readonly schema = z.object({
+    pattern: z.string().describe('Text or regex pattern to search for (case-insensitive).'),
+    channel: z.string().optional().describe('Restrict search to a specific channel (e.g. "#armament").'),
+    file: z.string().optional().describe('Restrict search to a specific file path.'),
+    max: z.number().optional().describe('Maximum results to return (default: 20, max: 100).'),
+  });
+
+  constructor(private manager: DriftManager) {}
+
+  async execute(args: unknown, _ctx: ToolContext): Promise<ToolResult> {
+    const { pattern, channel, file, max } = args as { pattern: string; channel?: string; file?: string; max?: number };
+    try {
+      if (!pattern) {
+        return { success: false, error: { message: 'Missing required "pattern".' } };
+      }
+
+      const maxResults = Math.min(max ?? 20, 100);
+      const results = await this.manager.grepContent(pattern, channel, file, maxResults);
+
+      if (results.length === 0) {
+        return { success: true, data: `No snapshots contain "${pattern}"${channel ? ` in channel ${channel}` : ''}${file ? ` in file ${file}` : ''}.` };
+      }
+
+      const output: string[] = [];
+      const matchCount = results.reduce((s, r) => s + r.matches.length, 0);
+      output.push(`drift_grep: "${pattern}" — ${results.length} snapshot(s) with ${matchCount} matching line(s)`);
+      output.push('─'.repeat(60));
+
+      for (const r of results) {
+        const shortPath = r.filePath.length > 70 ? '...' + r.filePath.slice(-67) : r.filePath;
+        output.push(`\n${r.snapshotId}  ${r.channel}  ${shortPath}`);
+        output.push(`  reason: ${r.reason.slice(0, 120)}`);
+        for (const m of r.matches.slice(0, 5)) {
+          output.push(`  ${String(m.lineNumber).padStart(4)} | ${m.line.slice(0, 120)}`);
+        }
+        if (r.matches.length > 5) {
+          output.push(`  ... and ${r.matches.length - 5} more match(es)`);
+        }
+      }
+
+      if (results.length >= maxResults) {
+        output.push(`\n(Results limited to ${maxResults}. Use --max to increase.)`);
+      }
+
+      return { success: true, data: output.join('\n') };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('Invalid regular expression')) {
+        return { success: false, error: { message: `Invalid regex pattern "${pattern}". Use a valid regex or plain text.` } };
+      }
+      return { success: false, error: { message: msg } };
+    }
   }
 }

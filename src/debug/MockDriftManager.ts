@@ -97,4 +97,31 @@ export class MockDriftManager implements IDriftManager {
     if (!entry) return null;
     return { content: entry.content, filePath: entry.path };
   }
+
+  async grepContent(pattern: string, channel?: string, filePath?: string, maxResults = 50): Promise<Array<{
+    snapshotId: string; filePath: string; channel: string; reason: string;
+    matches: Array<{ lineNumber: number; line: string }>;
+  }>> {
+    const regex = new RegExp(pattern, 'i');
+    const results: Array<{
+      snapshotId: string; filePath: string; channel: string; reason: string;
+      matches: Array<{ lineNumber: number; line: string }>;
+    }> = [];
+    for (const entry of this._entries) {
+      if (channel && entry.channel !== channel) continue;
+      if (filePath && entry.path !== filePath) continue;
+      if (results.length >= maxResults) break;
+      const lines = entry.content.split('\n');
+      const matches: Array<{ lineNumber: number; line: string }> = [];
+      for (let i = 0; i < lines.length; i++) {
+        if (regex.test(lines[i])) {
+          matches.push({ lineNumber: i + 1, line: lines[i].trim().slice(0, 200) });
+        }
+      }
+      if (matches.length > 0) {
+        results.push({ snapshotId: entry.id, filePath: entry.path, channel: entry.channel, reason: entry.reason, matches });
+      }
+    }
+    return results;
+  }
 }

@@ -42,4 +42,8 @@ export interface IDriftManager {
   getStats(channelName: string): Promise<IDriftStats>;
   getPerFileStats(): Promise<Array<{ path: string; count: number; totalSize: number; newest: number }>>;
   readSnapshotContent(id: string): Promise<{ content: string; filePath: string } | null>;
+  grepContent(pattern: string, channel?: string, filePath?: string, maxResults?: number): Promise<Array<{
+    snapshotId: string; filePath: string; channel: string; reason: string;
+    matches: Array<{ lineNumber: number; line: string }>;
+  }>>;
 }

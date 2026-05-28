@@ -178,6 +178,52 @@ export class FileDriftStore {
     return { content, filePath, entry };
   }
 
+  /** Search snapshot contents for a pattern. Returns matching snapshots with line info. */
+  async grepContent(pattern: string, channel?: string, filePath?: string, maxResults = 50): Promise<Array<{
+    snapshotId: string; filePath: string; channel: string; reason: string; hash: string;
+    matches: Array<{ lineNumber: number; line: string }>;
+  }>> {
+    const index = loadIndex(this._driftDir);
+    const results: Array<{
+      snapshotId: string; filePath: string; channel: string; reason: string; hash: string;
+      matches: Array<{ lineNumber: number; line: string }>;
+    }> = [];
+    const regex = new RegExp(pattern, 'i');
+    const seenHashes = new Map<string, string>(); // hash -> content cache
+
+    for (const [fp, entries] of Object.entries(index.files)) {
+      if (filePath && fp !== filePath) continue;
+      for (const entry of entries) {
+        if (channel && entry.channel !== channel) continue;
+        if (results.length >= maxResults) break;
+
+        // Read content (cached by hash)
+        let content: string;
+        if (seenHashes.has(entry.hash)) {
+          content = seenHashes.get(entry.hash)!;
+        } else {
+          const contentPath = join(this._contentDir, entry.hash);
+          if (!existsSync(contentPath)) continue;
+          content = readFileSync(contentPath, 'utf-8');
+          seenHashes.set(entry.hash, content);
+        }
+
+        // Search
+        const lines = content.split('\n');
+        const matches: Array<{ lineNumber: number; line: string }> = [];
+        for (let i = 0; i < lines.length; i++) {
+          if (regex.test(lines[i])) {
+            matches.push({ lineNumber: i + 1, line: lines[i].trim().slice(0, 200) });
+          }
+        }
+        if (matches.length > 0) {
+          results.push({ snapshotId: entry.id, filePath: fp, channel: entry.channel, reason: entry.reason, hash: entry.hash, matches });
+        }
+      }
+    }
+    return results;
+  }
+
   /**
    * Find a single snapshot by id.
    */
