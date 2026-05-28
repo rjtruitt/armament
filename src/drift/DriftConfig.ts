@@ -6,7 +6,7 @@ export const DRIFT_DEFAULTS: IDriftConfig = {
   enabled: true,
   autoPruneStaleOnStart: true,
   retentionDays: 0, // 0 = no age-based pruning by default
-  maxSizeBytes: 10 * 1024 * 1024, // 10MB default limit
+  maxSizeBytes: 50 * 1024 * 1024, // 50MB default limit
 };
 
 /** Merges partial config with defaults. */

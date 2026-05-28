@@ -28,6 +28,7 @@ export function registerSessionSchemas(pane: ConfigPane): void {
       { id: 'braveApiKey', status: 'active', cells: { setting: 'Brave API Key', value: cfg.getPath('web.braveApiKey') ?? '', type: 'text', description: 'API key for Brave search engine (set via web.braveApiKey in config)' } },
       { id: 'idleCleanupEnabled', status: 'active', cells: { setting: 'Idle Cleanup', value: s.idleCleanupEnabled ? 'on' : 'off', type: 'toggle', description: 'Spawn cleanup worker after idle timeout' } },
       { id: 'idleCleanupTimeout', status: 'active', cells: { setting: 'Idle Timeout (min)', value: `${s.idleCleanupTimeout}m`, type: 'text', description: 'Minutes of idle before cleanup worker spawns' } },
+      { id: 'driftMaxSize', status: 'active', cells: { setting: 'Drift Max Size (MB)', value: String((cfg.getPath('drift.maxSizeBytes') as number ?? 50) / (1024 * 1024)), type: 'number', description: 'Max size of drift snapshot store in MB (oldest pruned first when exceeded). Default 50MB.' } },
       { id: 'summarizationModel', status: 'active', cells: { setting: 'Summary Model', value: cfg.getPath('web.summarizationModel') ?? '', type: 'text', description: 'Model to use for page summarization in deep_research (empty = use channel model)' } },
     ],
     sortColumn: 'setting',

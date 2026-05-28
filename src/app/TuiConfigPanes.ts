@@ -469,6 +469,7 @@ export class TuiConfigPanes {
       'session.timeout.value': 'session.conversationTimeout',
       'session.idleCleanupEnabled.value': 'session.idleCleanupEnabled',
       'session.idleCleanupTimeout.value': 'session.idleCleanupTimeout',
+      'session.driftMaxSize.value': 'drift.maxSizeBytes',
       // Web
       'session.braveApiKey.value': 'web.braveApiKey',
       'session.summarizationModel.value': 'web.summarizationModel',

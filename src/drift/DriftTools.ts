@@ -119,21 +119,25 @@ export class DriftRollbackTool implements ITool {
 /** DriftPruneTool — prune old or stale snapshots. */
 export class DriftPruneTool implements ITool {
   readonly name = 'drift_prune';
-  readonly description = `Remove old drift snapshots to free disk space. Use --days to prune by age, --stale to prune snapshots for files that no longer exist.`;
+  readonly description = `Remove old drift snapshots to free disk space. Use --days to prune by age, --stale to prune snapshots for files that no longer exist, --maxSize to cap total store size (e.g. 100 for 100MB).`;
+
   readonly schema = z.object({
     days: z.number().optional().describe('Remove snapshots older than this many days'),
     staleOnly: z.boolean().optional().describe('Only remove snapshots for paths that no longer exist'),
+    maxSize: z.number().optional().describe('Prune to this max size in MB (oldest removed first)'),
   });
 
   constructor(private manager: DriftManager, private channel: string) {}
 
   async execute(args: unknown, _ctx: ToolContext): Promise<ToolResult> {
-    const { days, staleOnly } = args as { days?: number; staleOnly?: boolean };
+    const { days, staleOnly, maxSize } = args as { days?: number; staleOnly?: boolean; maxSize?: number };
     try {
-      const count = await this.manager.prune({ days, staleOnly });
+      const maxSizeBytes = maxSize ? maxSize * 1024 * 1024 : undefined;
+      const count = await this.manager.prune({ days, staleOnly, maxSizeBytes });
       let msg = `Pruned ${count} snapshot${count !== 1 ? 's' : ''}.`;
       if (days) msg += ` (older than ${days} days)`;
       if (staleOnly) msg += ` (stale paths only)`;
+      if (maxSize) msg += ` (capped at ${maxSize}MB)`;
       return { success: true, data: msg };
     } catch (e: unknown) {
       return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
@@ -148,7 +152,6 @@ export function createDriftTools(manager: DriftManager, channel: string): ITool[
     new DriftSnapshotTool(manager, channel),
     new DriftSnapshotListTool(manager, channel),
     new DriftRollbackTool(manager, channel),
-    new DriftPruneTool(manager, channel),
     new DriftTreeTool(manager),
     new DriftDiffTool(manager),
     new DriftGrepTool(manager),
