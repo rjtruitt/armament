@@ -251,7 +251,7 @@ export class TuiConfigPainter {
       }
 
       cellLine = cellLine.slice(0, maxWidth);
-      const color = isCursor ? accentC : (isSelected ? selectC : headerC);
+      const color = isCursor ? accentC : (isSelected ? selectC : (r.status === 'inactive' ? (statusColors.inactive || dimC) : headerC));
       this.screen.writeAt(row, startCol, `${bg}${color}${cellLine}${resetBg}${RESET}`);
       row++;
     }

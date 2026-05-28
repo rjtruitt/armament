@@ -475,7 +475,7 @@ export class TuiRenderer {
   /**
    * Stop thinking.
    */
-  stopThinking(): void { this.statusDisplay.stopThinking(); }
+  stopThinking(channel?: string): void { this.statusDisplay.stopThinking(channel); }
   /**
    * Start compacting.
    */

@@ -386,6 +386,26 @@ export class ThreadCoordinator {
     this.sendToThread(channelName, { type: 'set_workspace', workspace });
   }
 
+  /** Register a tool on a thread. */
+  registerTool(channelName: string, toolDef: any): void {
+    this.sendToThread(channelName, { type: 'register_tool', toolDef });
+  }
+
+  /** Deregister a tool on a thread. */
+  deregisterTool(channelName: string, name: string): void {
+    this.sendToThread(channelName, { type: 'deregister_tool', name });
+  }
+
+  /** Mark a thread's agent as complete. */
+  markComplete(channelName: string): void {
+    this.sendToThread(channelName, { type: 'mark_complete' });
+  }
+
+  /** Mark a thread's agent as error. */
+  markError(channelName: string): void {
+    this.sendToThread(channelName, { type: 'mark_error' });
+  }
+
   // --- Internal helpers ---
 
   private sendToThread(channelName: string, msg: InboundMessage): void {

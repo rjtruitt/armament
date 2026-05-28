@@ -32,6 +32,8 @@ export type InboundMessage =
   | { type: 'add_sticky'; content: string; position: 'top' | 'bottom' | 'both' }
   | { type: 'add_system_message'; content: string }
   | { type: 'remove_sticky'; index: number }
+  | { type: 'mark_complete' }
+  | { type: 'mark_error' }
   | { type: 'mcp_tool_result'; requestId: string; result: ToolResult }
   | { type: 'subworker_complete'; workerId: string; response: string }
   | { type: 'subworker_error'; workerId: string; error: string }

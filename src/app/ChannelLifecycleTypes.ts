@@ -38,7 +38,7 @@ export interface ChannelLifecycleCallbacks {
   removeChannel(name: string): void;
   removeAgent(name: string): void;
   startThinking(channel: string): void;
-  stopThinking(): void;
+  stopThinking(channel: string): void;
   updateAgentStatus(channel: string, status: string): void;
   addChannelChild(channel: string, child: { id: string; label: string; status: string; role: string }): void;
   updateChannelChild(channel: string, childId: string, update: { status: string }): void;

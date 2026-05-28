@@ -34,6 +34,7 @@ export function registerConfigPanelSchemas(
       { id: '@context', label: 'Context', description: 'Context window, compaction & snapshots', type: 'submenu' as const },
       { id: '@workspace', label: 'Workspace', description: 'File access, paths, encoding', type: 'submenu' as const },
       { id: '@display', label: 'Display', description: 'Theme, colors, verbosity', type: 'submenu' as const },
+      { id: '@history', label: 'History', description: 'Nudge intervals & scribe triggers', type: 'submenu' as const },
     ]};
     pane['panels'].set('settings', settingsPanel);
     pane.onNavigate = onNavigate;

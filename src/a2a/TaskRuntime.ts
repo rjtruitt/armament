@@ -54,6 +54,7 @@ export class TaskRuntime {
     model?: string,
     systemPrompt?: string,
     history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    stickyNotes?: Array<{ content: string; position: 'top' | 'bottom' | 'both' }>,
   ): Promise<{ success: boolean; workerId?: string; error?: string }> {
     const safeName = name.replace(/\s+/g, '-').toLowerCase().slice(0, 15);
     const modelConfig = model
@@ -92,6 +93,7 @@ export class TaskRuntime {
         systemPrompt: systemPrompt || WORKER_SYSTEM_PROMPT(name),
         tools: workerTools,
         stickyNotes: [
+          ...(stickyNotes || []),
           { content: 'You MUST call complete_worker when finished. This is the ONLY way to end your task.', position: 'both' as const },
           { content: 'Call report_progress at natural breakpoints to show you are alive.', position: 'bottom' as const },
         ],

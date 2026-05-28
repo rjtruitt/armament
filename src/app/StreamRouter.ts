@@ -163,7 +163,7 @@ export class StreamRouter {
 
         case 'tool_start': {
           if (showText) tui?.finalizeStreamMessage(target.channel);
-          tui?.stopThinking();
+          tui?.stopThinking(target.channel);
           inToolCall = true;
           const startName = chunk.toolName ?? 'tool';
           const blockId = tui?.beginToolBlock(startName, 'streaming...', target.channel);
@@ -259,7 +259,7 @@ export class StreamRouter {
                 const entry = queue.shift()!;
                 const entryChannel = typeof entry === 'string' ? undefined : entry.channel;
                 // Only drain messages for the current channel — requeue others
-                if (entryChannel && entryChannel !== target.channel) {
+                if (entryChannel !== undefined && entryChannel !== target.channel) {
                   remaining.push(entry);
                 } else {
                   drained.push(entry);
@@ -280,14 +280,14 @@ export class StreamRouter {
         }
 
         case 'done':
-          tui?.stopThinking();
+          tui?.stopThinking(target.channel);
           if (showText) tui?.finalizeStreamMessage(target.channel);
           break;
       }
     }
 
     if (interrupted?.()) {
-      tui?.stopThinking();
+      tui?.stopThinking(target.channel);
       if (showText) tui?.cancelStreamMessage(target.channel);
     }
 

@@ -20,6 +20,7 @@ export function registerSessionPanels(panels: Map<string, MenuPanel>, config: Se
       { id: 'session.workerMaxTurns', label: 'Worker max turns', description: '0 = infinite', type: 'text', value: '250' },
       { id: 'session.conversationTimeout', label: 'Conversation timeout', description: 'Minutes', type: 'text', value: '60' },
       { id: 'session.ratelimit', label: 'Rate limiting', description: 'RPM, TPM, burst', type: 'submenu' },
+      { id: 'history', label: 'History Management', description: 'Nudge & scribe settings', type: 'submenu' },
     ],
   });
 
@@ -66,6 +67,24 @@ export function registerSessionPanels(panels: Map<string, MenuPanel>, config: Se
           { id: 'hybrid', label: 'hybrid', description: 'Summary + sliding window' },
         ],
       },
+    ],
+  });
+
+  panels.set('history', {
+    id: 'history',
+    title: 'History Management',
+    parent: 'root',
+    items: [
+      { id: 'history.recurringPromptEnabled', label: 'Recurring Prompt', description: 'Recurring prompt from reminder_prompt.md', type: 'toggle', value: true },
+      { id: 'history.recurringPromptInterval', label: 'Prompt Interval', description: 'Minutes', type: 'text', value: '5' },
+      { id: 'history.historyScribeEnabled', label: 'Scribe Worker', description: 'Background documentation worker', type: 'toggle', value: true },
+      { id: 'history.scribeOnPrune', label: 'Scribe on Prune', description: 'Fire on state file rollover', type: 'toggle', value: true },
+      { id: 'history.scribeOnIdle', label: 'Scribe on Idle', description: 'Fire after idle timeout', type: 'toggle', value: true },
+      { id: 'history.historyScribeTimeout', label: 'Idle Timeout', description: 'Minutes', type: 'text', value: '15' },
+      { id: 'history.scribeIntervalEnabled', label: 'Scribe on Timer ⚠', description: 'Full state injection, expensive!', type: 'toggle', value: false },
+      { id: 'history.scribeIntervalMinutes', label: 'Timer Interval', description: 'Minutes', type: 'text', value: '60' },
+      { id: 'history.historyScribeMaxMessages', label: 'Max Messages', description: '0 = all', type: 'text', value: '50' },
+      { id: 'history.historyScribeModel', label: 'Scribe Model', description: 'Empty = default', type: 'text', value: '' },
     ],
   });
 }

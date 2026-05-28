@@ -24,7 +24,7 @@ export interface McpServer {
 export interface McpManagerCallbacks {
   writeMessage(type: string, sender: string, text: string, channel?: string): void;
   startThinking(channel?: string): void;
-  stopThinking(): void;
+  stopThinking(channel?: string): void;
   rebuildMcpMenu(names: string[], configs: Array<{ name: string; config: any }>): void;
   getChannelAgents(): Map<string, { registerTools(tools: ITool[]): void; deregisterTool(name: string): boolean }>;
 }

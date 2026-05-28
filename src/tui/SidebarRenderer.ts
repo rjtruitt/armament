@@ -391,7 +391,7 @@ export function renderThemed(
 
   const stats = theme.stats;
 
-  const settingsActive = activeChannel === '@settings' || activeChannel?.startsWith('@session') || activeChannel === '@context' || activeChannel === '@workspace' || activeChannel?.startsWith('@agents') || activeChannel?.startsWith('@display') || activeChannel?.startsWith('@outputs');
+  const settingsActive = activeChannel === '@settings' || activeChannel?.startsWith('@session') || activeChannel === '@context' || activeChannel === '@workspace' || activeChannel?.startsWith('@agents') || activeChannel?.startsWith('@display') || activeChannel?.startsWith('@outputs') || activeChannel?.startsWith('@history');
   const settingsLine = settingsActive ? activeLine('settings') : inactiveLine('settings');
   if (row < state.region.y + h) writeRow('  ' + settingsLine + pad(6 + 'settings'.length), '@settings');
 

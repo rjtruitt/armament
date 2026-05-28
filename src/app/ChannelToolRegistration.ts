@@ -302,12 +302,12 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       deps.callbacks.updateAgentStatus(chName, 'thinking');
     },
     onTurnComplete: (_turnNumber: number, _response: string) => {
-      deps.callbacks.stopThinking();
+      deps.callbacks.stopThinking(chName);
       deps.callbacks.updateAgentStatus(chName, 'idle');
       // State file write happens in onPostStream (only when threshold hit) + on shutdown
     },
     onToolCall: (toolName: string, args: unknown) => {
-      deps.callbacks.stopThinking();
+      deps.callbacks.stopThinking(chName);
       deps.callbacks.startThinking(chName);
       deps.callbacks.updateAgentStatus(chName, 'tool_use');
       const argsStr = typeof args === 'object' && args ? JSON.stringify(args).slice(0, 60) : '';
@@ -322,7 +322,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       }
     },
     onToolResult: (toolName: string, args: unknown, result: any, durationMs: number) => {
-      deps.callbacks.stopThinking();
+      deps.callbacks.stopThinking(chName);
       deps.callbacks.updateAgentStatus(chName, 'thinking');
       const status = result.success ? '✓' : '✗';
       deps.callbacks.writeMessage('system', 'tool',

@@ -30,6 +30,7 @@ export function registerAllPanels(
       { id: 'outputs', label: 'Outputs', description: 'Slack, SMS, email & tool chains', type: 'submenu' },
       { id: 'display', label: 'Display', description: 'Theme, compact mode, verbosity', type: 'submenu' },
       { id: 'session', label: 'Session', description: 'Budget, retries, streaming', type: 'submenu' },
+      { id: 'history', label: 'History Management', description: 'Nudge intervals & scribe triggers', type: 'submenu' },
     ],
   });
 

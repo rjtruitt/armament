@@ -165,7 +165,7 @@ export async function drainInputQueue(
     const text = typeof entry === 'string' ? entry : (entry as QueuedMessage).text;
     const entryChannel = typeof entry === 'string' ? undefined : (entry as QueuedMessage).channel;
     // Only process messages for the specified channel — requeue others
-    if (entryChannel && entryChannel !== channel) {
+    if (entryChannel !== undefined && entryChannel !== channel) {
       remaining.push(entry);
     } else {
       await processMessage(text, entryChannel);

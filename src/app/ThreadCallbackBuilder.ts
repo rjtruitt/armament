@@ -112,7 +112,7 @@ export function resumeAgentTurn(channel: string, deps: ResumeAgentDeps): void {
           } else if (chunk.type === 'tool_result') {
             tui.writeToolBlock(chunk.toolName ?? 'tool', '', chunk.result as any, chunk.durationMs ?? 0, channel);
           } else if (chunk.type === 'done') {
-            tui.stopThinking();
+            tui.stopThinking(channel);
             tui.finalizeStreamMessage(channel);
           }
         }

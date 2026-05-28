@@ -238,20 +238,6 @@ export class ChannelThreadHandle {
     return this.coordinator.shutdown(this.channelName);
   }
 
-  /**
-   * Mark complete.
-   */
-  markComplete(): void {
-    // no-op for thread — thread manages its own lifecycle
-  }
-
-  /**
-   * Mark error.
-   */
-  markError(): void {
-    // no-op for thread
-  }
-
   // Pinned/recent files — managed locally for quick access
   private _pinnedFiles: Set<string> = new Set();
   /**
@@ -296,22 +282,52 @@ export class ChannelThreadHandle {
   /**
    * Register tool.
    */
-  registerTool(_tool: any): void {}
+  registerTool(tool: any): void {
+    const def: any = {
+      name: tool.name || tool.definition?.name,
+      description: tool.description || tool.definition?.description || '',
+      inputSchema: tool.inputSchema || tool.definition?.inputSchema || { type: 'object', properties: {} },
+      isMcp: tool.isMcp || false,
+      mcpServer: tool.mcpServer || undefined,
+    };
+    if (def.name) this.coordinator.registerTool(this.channelName, def);
+  }
   /**
    * Register tools.
    */
-  registerTools(_tools: any[]): void {}
+  registerTools(tools: any[]): void {
+    for (const tool of tools) {
+      if (typeof tool === 'string') {
+        // If it's just a name, register with minimal info
+        this.coordinator.registerTool(this.channelName, { name: tool, description: '', inputSchema: { type: 'object', properties: {} } });
+      } else {
+        this.registerTool(tool);
+      }
+    }
+  }
   /**
    * Deregister tool.
    */
   deregisterTool(name: string): boolean {
-    this.coordinator.sendMessage(this.channelName, '');
+    this.coordinator.deregisterTool(this.channelName, name);
     return true;
   }
   /**
    * Gets the state.
    */
   getState(): any { return { running: false, turn: 0 }; }
+  /**
+   * Mark complete.
+   */
+  markComplete(): void {
+    this.coordinator.markComplete(this.channelName);
+  }
+  /**
+   * Mark error.
+   */
+  markError(): void {
+    this.coordinator.markError(this.channelName);
+  }
 
   /**
    * Update workspace for all tools in the thread.

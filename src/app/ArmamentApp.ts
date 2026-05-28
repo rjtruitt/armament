@@ -247,7 +247,7 @@ export class ArmamentApp extends ReplPublicAPI {
           state.interruptCount++;
         }
         if (ch && this._threadCoordinator) this._threadCoordinator.interrupt(ch);
-        this.tuiMode?.stopThinking();
+        this.tuiMode?.stopThinking(ch);
         this.tuiMode?.cancelStreamMessage(this.activeChannelName);
         this.tuiMode?.writeMessage('system', '*', '── interrupted ──', this.activeChannelName);
         if ((this.getChannelState(this.activeChannelName ?? '').interruptCount) >= 2 && !this.getChannelProcessing(this.activeChannelName)) {
@@ -362,8 +362,7 @@ export class ArmamentApp extends ReplPublicAPI {
         if (this.tuiMode) this.tuiMode.writeMessage('agent', this.getAgentNick(), response, channel);
         else process.stdout.write(response + '\n');
       }
-      // After first successful message, ensure the maintenance schedule exists
-      if (channel) this._channelLifecycle.ensureMaintenanceSchedule(channel);
+      // After first successful message
     } finally {
       state.processing = false;
       const finishedChannel = channel;

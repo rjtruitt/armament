@@ -8,8 +8,11 @@ export interface StatusDisplayDelegate {
 
 /** Class representing TuiStatusDisplay. */
 export class TuiStatusDisplay {
+  /** Set of channels currently thinking — reference-counted so concurrent channels don't race. */
+  private _thinkingChannels: Set<string> = new Set();
   private _thinkingTimer: ReturnType<typeof setInterval> | null = null;
   private _thinkingFrame = 0;
+  /** Legacy — the most-recently started thinking channel, kept for render checks. */
   private _thinkingChannel: string | null = null;
   private _thinkingMsg = '';
   private _thinkingMsgLocked = false;
@@ -72,17 +75,20 @@ export class TuiStatusDisplay {
    * Start thinking.
    */
   startThinking(channel?: string, message?: string): void {
-    this._thinkingChannel = channel ?? this.delegate.getActiveChannel();
+    const ch = channel ?? this.delegate.getActiveChannel();
+    this._thinkingChannels.add(ch);
+    this._thinkingChannel = ch;
     this._thinkingMsg = message ?? THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
     this._thinkingFrame = 0;
-    if (this._thinkingTimer) clearInterval(this._thinkingTimer);
-    this._thinkingTimer = setInterval(() => {
-      this._thinkingFrame++;
-      if (this._thinkingFrame % 10 === 0 && !this._thinkingMsgLocked) {
-        this._thinkingMsg = THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
-      }
-      if (this._thinkingChannel === this.delegate.getActiveChannel()) this.delegate.render();
-    }, 100);
+    if (!this._thinkingTimer) {
+      this._thinkingTimer = setInterval(() => {
+        this._thinkingFrame++;
+        if (this._thinkingFrame % 10 === 0 && !this._thinkingMsgLocked) {
+          this._thinkingMsg = THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
+        }
+        if (this._thinkingChannels.has(this.delegate.getActiveChannel())) this.delegate.render();
+      }, 100);
+    }
     this._thinkingMsgLocked = !!message;
   }
 
@@ -95,9 +101,18 @@ export class TuiStatusDisplay {
   }
 
   /**
-   * Stop thinking.
+   * Stop thinking for a channel (reference-counted).
+   * Pass the channel name to decrement its ref. Only stops the timer
+   * and clears state when ALL channels have stopped thinking.
+   * Calling without a channel (legacy) clears everything immediately.
    */
-  stopThinking(): void {
+  stopThinking(channel?: string): void {
+    if (channel) {
+      this._thinkingChannels.delete(channel);
+      if (this._thinkingChannels.size > 0) return; // other channels still thinking
+    } else {
+      this._thinkingChannels.clear();
+    }
     if (this._thinkingTimer) {
       clearInterval(this._thinkingTimer);
       this._thinkingTimer = null;

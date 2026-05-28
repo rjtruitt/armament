@@ -279,6 +279,14 @@ port.on('message', async (msg: InboundMessage) => {
       if (agent) agent.deregisterTool(msg.name);
       break;
 
+    case 'mark_complete':
+      if (agent) agent.markComplete();
+      break;
+
+    case 'mark_error':
+      if (agent) agent.markError();
+      break;
+
     case 'mcp_tool_result': {
       const pending = pendingMcpRequests.get(msg.requestId);
       if (pending) {

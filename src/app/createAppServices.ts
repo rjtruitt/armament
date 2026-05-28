@@ -160,7 +160,7 @@ export function createAppServices(
       if (tui) tui.writeMessage(type as any, sender, text, channel);
     },
     startThinking: (channel) => host.getTui()?.startThinking(channel),
-    stopThinking: () => host.getTui()?.stopThinking(),
+    stopThinking: (channel?: string) => host.getTui()?.stopThinking(channel),
     rebuildMcpMenu: (names, configs) => host.getTui()?.rebuildMcpMenu(names, configs),
     getChannelAgents: () => channelLifecycle.getChannelAgents() as any,
   });
@@ -201,7 +201,7 @@ export function createAppServices(
       removeChannel: (name) => host.getTui()?.removeChannel(name),
       removeAgent: (name) => host.getTui()?.removeAgent(name),
       startThinking: (channel) => host.getTui()?.startThinking(channel),
-      stopThinking: () => host.getTui()?.stopThinking(),
+      stopThinking: (channel: string) => host.getTui()?.stopThinking(channel),
       updateAgentStatus: (channel, status) => host.getTui()?.updateAgentStatus(channel, status),
       addChannelChild: (channel, child) => host.getTui()?.addChannelChild(channel, child as any),
       updateChannelChild: (channel, childId, update) => host.getTui()?.updateChannelChild(channel, childId, update as any),

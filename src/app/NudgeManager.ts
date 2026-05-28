@@ -1,10 +1,8 @@
-/** NudgeManager — reads core-nudges.md and manages per-channel scheduled prompts. */
+/** NudgeManager — manages user/tool-created nudges (created via /nudge REPL or set_nudge tool). */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { NudgeStore } from '../providers/index.js';
 import { parseScheduleInterval } from '../providers/NudgeTools.js';
-import { armaDataDir } from './ChannelPaths.js';
+import { ScheduledPrompt } from './ScheduledPrompt.js';
 
 /**
  * Describes a nudge that is currently active on a channel.
@@ -18,68 +16,40 @@ export interface ActiveNudge {
   every?: string;
 }
 
-const NUDGE_FILE = join(armaDataDir(), 'core-nudges.md');
-
 /**
- * Nudge manager class.
+ * Nudge manager class. Handles user/tool-created nudges only.
+ * Each nudge is backed by a ScheduledPrompt for lifecycle management.
+ * Auto-nudge / history scribe is managed separately by ChannelLifecycle.
  */
 export class NudgeManager {
   /** Per-channel nudge stores. */
   private _nudgeStores = new Map<string, NudgeStore>();
-  /** Tracks which channels have had their nudges loaded. */
-  private _loadedChannels = new Set<string>();
-  /** Cached parsed prompt text (read once from core-nudges.md). */
-  private _prompt: string | null = null;
-  /** Reverse lookup: jobId → channel name, for delete/list. */
+  /** Reverse lookup: jobId -> channel name, for delete/list. */
   private _jobToChannel = new Map<string, string>();
+  /** Tracks ScheduledPrompt instances by job ID so delete() can clean them up. */
+  private _prompts = new Map<string, ScheduledPrompt>();
 
   /** Register a channel's nudge store. Called when a ChannelAgent is created. */
   registerStore(chName: string, store: NudgeStore): void {
     this._nudgeStores.set(chName, store);
   }
 
+  /** Get a channel's nudge store, or undefined if not yet registered. */
+  getStore(chName: string): NudgeStore | undefined {
+    return this._nudgeStores.get(chName);
+  }
+
   /** Unregister a channel's nudge store (on channel leave). */
   unregisterStore(chName: string): void {
     this._nudgeStores.delete(chName);
-    this._loadedChannels.delete(chName);
-    // Clean up job-to-channel mapping
+    // Stop any prompts for this channel
     for (const [jobId, ch] of this._jobToChannel) {
-      if (ch === chName) this._jobToChannel.delete(jobId);
-    }
-  }
-
-  /** Load nudges from core-nudges.md for a specific channel. Called once per channel after first user message. */
-  loadForChannel(chName: string): void {
-    if (this._loadedChannels.has(chName)) return;
-    const store = this._nudgeStores.get(chName);
-    if (!store) return;
-
-    let prompt: string | null = null;
-
-    if (!this._prompt) {
-      if (!existsSync(NUDGE_FILE)) {
-        this._loadedChannels.add(chName);
-        return;
+      if (ch === chName) {
+        this._prompts.get(jobId)?.stop();
+        this._prompts.delete(jobId);
+        this._jobToChannel.delete(jobId);
       }
-      const content = readFileSync(NUDGE_FILE, 'utf-8');
-      this._prompt = this._extractPrompt(content);
     }
-    prompt = this._prompt;
-
-    if (!prompt) {
-      this._loadedChannels.add(chName);
-      return;
-    }
-
-    // Default 5m interval — single prompt from file content
-    const job = store.create(prompt, 5 * 60 * 1000, {
-      recurring: true,
-      hidden: true,
-      fireNow: true,
-      expiresInMs: 7 * 24 * 60 * 60 * 1000,
-    });
-    this._jobToChannel.set(job.id, chName);
-    this._loadedChannels.add(chName);
   }
 
   /** List all active nudges, optionally filtered by channel. */
@@ -117,50 +87,26 @@ export class NudgeManager {
     if (!store) return null;
     const ms = parseScheduleInterval(every);
     if (ms <= 0) return null;
-    const job = store.create(prompt, ms, {
-      recurring: true,
+    const sp = new ScheduledPrompt(store);
+    const jobId = sp.start(prompt, ms, {
       hidden: false,
       expiresInMs: 7 * 24 * 60 * 60 * 1000,
     });
-    this._jobToChannel.set(job.id, chName);
-    return job.id;
+    if (!jobId) return null;
+    this._jobToChannel.set(jobId, chName);
+    this._prompts.set(jobId, sp);
+    return jobId;
   }
 
   /** Delete a nudge by job ID. Returns true if found and deleted. */
   delete(jobId: string): boolean {
     const chName = this._jobToChannel.get(jobId);
     if (!chName) return false;
-    const store = this._nudgeStores.get(chName);
-    if (!store) return false;
-    const ok = store.delete(jobId);
-    if (ok) this._jobToChannel.delete(jobId);
-    return ok;
+    const sp = this._prompts.get(jobId);
+    if (!sp) return false;
+    sp.stop();
+    this._prompts.delete(jobId);
+    this._jobToChannel.delete(jobId);
+    return true;
   }
-
-  // --- Private ---
-
-  /**
-   * Extract the prompt text from core-nudges.md content.
-   * Strips # header lines and content inside fenced code blocks (```).
-   * The remaining lines are joined with newlines and returned as a single prompt string.
-   * @returns The extracted prompt, or null if content is empty after filtering.
-   */
-  private _extractPrompt(content: string): string | null {
-    const lines: string[] = [];
-    let inFence = false;
-    for (const raw of content.split('\n')) {
-      const line = raw.trimEnd();
-      // Skip fenced code blocks
-      if (/^```/.test(line)) { inFence = !inFence; continue; }
-      if (inFence) continue;
-      // Skip heading/comment lines
-      if (/^#/.test(line)) continue;
-      // Skip blank lines at start
-      if (lines.length === 0 && line.trim() === '') continue;
-      lines.push(line);
-    }
-    const prompt = lines.map(l => l.trim()).join('\n').trim();
-    return prompt.length > 0 ? prompt : null;
-  }
-
 }

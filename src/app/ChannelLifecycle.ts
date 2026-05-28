@@ -8,9 +8,10 @@ import { NudgeManager } from './NudgeManager.js';
 import type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
 import { UserConfig } from '../config/index.js';
 import { stripAllAnsi } from '../core/stripAnsi.js';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { getArmaPath, getNotesPath, getArchDir, armaDataDir, getChannelRoot } from './ChannelPaths.js';
+import { ScheduledPrompt } from './ScheduledPrompt.js';
 export type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps };
 
 /**
@@ -26,87 +27,197 @@ export class ChannelLifecycle {
   private _taskStore = new TaskStore();
   /** NudgeManager — reads core-nudges.md and creates per-channel scheduled prompts. */
   private _nudgeManager = new NudgeManager();
-  /** Last time each channel's agent went idle (used for idle-cleanup worker scheduling). */
-  private _lastIdleTime = new Map<string, number>();
-  /** Interval handle for periodic idle checks. */
-  private _idleCheckInterval: ReturnType<typeof setInterval> | null = null;
-  /** Get the idle-cleanup timeout in ms from config. */
-  private _idleCleanupDelay(): number {
-    return (UserConfig.instance().settings.session.idleCleanupTimeout || 15) * 60 * 1000;
+  /** Per-channel recurring prompts (reads .armaws/reminder_prompt.md). */
+  private _recurringPrompts = new Map<string, ScheduledPrompt>();
+  /** Last time each channel's agent went idle (used for HistoryScribe scheduling). */
+  private _lastScribeTime = new Map<string, number>();
+  /** Interval handle for periodic idle checks (30s poll). */
+  private _scribeCheckInterval: ReturnType<typeof setInterval> | null = null;
+  /** Interval handle for timer-based scribe (optional, off by default). */
+  private _scribeIntervalTimer: ReturnType<typeof setInterval> | null = null;
+  /** Get the scribe idle timeout in ms from config. */
+  private _scribeDelay(): number {
+    return (UserConfig.instance().settings.session.historyScribeTimeout || 15) * 60 * 1000;
   }
 
   constructor(deps: ChannelLifecycleDeps) {
     this.deps = deps;
-    this._startIdleCheckInterval();
+    this._startScribeTimers();
+    // Listen for live scribe config changes to restart interval timer
+    try {
+      getGlobalEventBus().on((event: any) => {
+        if (event && event.type === 'scribe:config-changed') {
+          this._updateScribeIntervalTimer();
+        }
+        if (event && event.type === 'recurring-prompt:config-changed') {
+          this._reloadRecurringPrompts();
+        }
+      });
+    } catch {}
   }
 
-  /** Start the periodic idle-check timer. */
-  private _startIdleCheckInterval(): void {
-    if (this._idleCheckInterval) return;
-    this._idleCheckInterval = setInterval(() => this._checkIdleChannels(), 30_000);
+  /** Start scribe timers: idle poll (always) + optional interval scribe. */
+  private _startScribeTimers(): void {
+    if (!this._scribeCheckInterval) {
+      this._scribeCheckInterval = setInterval(() => this._checkScribeEligibility(), 30_000);
+    }
+    this._updateScribeIntervalTimer();
   }
 
-  /** Stop the periodic idle-check timer. */
-  private _stopIdleCheckInterval(): void {
-    if (this._idleCheckInterval) {
-      clearInterval(this._idleCheckInterval);
-      this._idleCheckInterval = null;
+  /** Start or stop the optional interval-based scribe timer based on config. */
+  private _updateScribeIntervalTimer(): void {
+    if (this._scribeIntervalTimer) {
+      clearInterval(this._scribeIntervalTimer);
+      this._scribeIntervalTimer = null;
+    }
+    const settings = UserConfig.instance().settings.session;
+    if (settings.historyScribeEnabled && settings.scribeIntervalEnabled) {
+      const intervalMs = (settings.scribeIntervalMinutes || 60) * 60 * 1000;
+      this._scribeIntervalTimer = setInterval(() => {
+        for (const [chName, agent] of this.channelAgents) {
+          if (!chName.startsWith('#') || chName.startsWith('worker-')) continue;
+          if (agent.status === 'idle') {
+            this._spawnHistoryScribeWorker(chName).catch(() => {});
+          }
+        }
+      }, intervalMs);
     }
   }
 
-  /** Check all channels for idle-cleanup eligibility. */
-  private _checkIdleChannels(): void {
-    if (!UserConfig.instance().settings.session.idleCleanupEnabled) return;
-    const delay = this._idleCleanupDelay();
+  /** Stop all scribe timers. */
+  private _stopScribeTimers(): void {
+    if (this._scribeCheckInterval) {
+      clearInterval(this._scribeCheckInterval);
+      this._scribeCheckInterval = null;
+    }
+    if (this._scribeIntervalTimer) {
+      clearInterval(this._scribeIntervalTimer);
+      this._scribeIntervalTimer = null;
+    }
+  }
+
+  /** Check all channels for idle-based scribe eligibility. */
+  private _checkScribeEligibility(): void {
+    const settings = UserConfig.instance().settings.session;
+    if (!settings.historyScribeEnabled || !settings.scribeOnIdle) return;
+    const delay = this._scribeDelay();
     for (const [chName, agent] of this.channelAgents) {
       if (!chName.startsWith('#') || chName.startsWith('worker-')) continue;
       if (agent.status === 'idle') {
-        const lastIdle = this._lastIdleTime.get(chName);
+        const lastIdle = this._lastScribeTime.get(chName);
         if (!lastIdle) {
-          this._lastIdleTime.set(chName, Date.now());
+          this._lastScribeTime.set(chName, Date.now());
         } else if (Date.now() - lastIdle >= delay) {
-          this._lastIdleTime.delete(chName);
-          this._spawnIdleCleanupWorker(chName).catch(() => {});
+          this._lastScribeTime.delete(chName);
+          this._spawnHistoryScribeWorker(chName).catch(() => {});
         }
       } else {
         // Agent is busy — clear idle tracking so timer restarts when it goes idle again
-        this._lastIdleTime.delete(chName);
+        this._lastScribeTime.delete(chName);
       }
     }
   }
 
-  /** Spawn a background cleanup worker for an idle channel. */
-  private async _spawnIdleCleanupWorker(chName: string): Promise<void> {
+  /** Spawn a background scribe worker for an idle channel. */
+  private async _spawnHistoryScribeWorker(chName: string): Promise<void> {
     const runtime = this.channelRuntimes.get(chName);
     if (!runtime) return;
 
     const armaPath = getArmaPath(chName);
-    const cleanupPath = join(armaPath, 'idle-cleanup.md');
-    if (!existsSync(cleanupPath)) return;
+    const scribePath = join(armaPath, 'history-scribe.md');
+    if (!existsSync(scribePath)) return;
 
     // Don't spawn if user sent a message in the last minute
-    const lastIdle = this._lastIdleTime.get(chName);
+    const lastIdle = this._lastScribeTime.get(chName);
     if (lastIdle && Date.now() - lastIdle < 60_000) return;
 
-    const template = readFileSync(cleanupPath, 'utf-8');
+    const template = readFileSync(scribePath, 'utf-8');
     const parentRoot = getChannelRoot(chName);
-    const workerId = `worker-${chName.slice(1)}-cleanup-${Date.now()}`;
+    const workerId = `worker-${chName.slice(1)}-scribe-${Date.now()}`;
 
-    // Fill in placeholders
+    // Build channel context string — just the recent messages
+    const rawMax = UserConfig.instance().settings.session.historyScribeMaxMessages;
+    const maxMessages = (rawMax === 0 || rawMax === undefined || rawMax === null) ? undefined : rawMax;
+    const messages = this.deps.callbacks.getChannelMessages(chName) ?? [];
+    const messageText = messages
+      .filter((m: any) => m.content && typeof m.content === 'string')
+      .slice(maxMessages ? -maxMessages : undefined)
+      .map((m: any) => `[${m.type}] ${m.sender}: ${m.content}`)
+      .join('\n');
+
     const task = template
       .replace(/\{parent-channel\}/g, chName)
-      .replace(/\{parent-workspace\}/g, parentRoot);
+      .replace(/\{parent-workspace\}/g, parentRoot)
+      .replace(/\{notes-path\}/g, join(armaPath, 'notes.md'))
+      .replace(/\{arch-path\}/g, join(armaPath, 'architecture'))
+      .replace(/\{recent-messages\}/g, messageText || '(no recent messages)');
 
-    const result = await runtime.spawnWorker(workerId, task);
+    // Note: no seedMessages — context is in the prompt itself so the worker
+    // doesn't see a transparently faked conversation.
+
+    // Sticky note with explicit paths to the parent channel's real files
+    const stickyNotes = [
+      { content: `📁 Parent channel: ${chName}`, position: 'top' as const },
+      { content: `📝 notes.md: ${join(armaPath, 'notes.md')}`, position: 'top' as const },
+      { content: `📂 architecture/: ${join(armaPath, 'architecture')}`, position: 'top' as const },
+    ];
+
+    // Resolve scribe model from config (format: "provider:model" or just "model", empty = default)
+    const scribeModelSetting = UserConfig.instance().settings.session.historyScribeModel;
+    let scribeModel: string | undefined;
+    if (scribeModelSetting) {
+      scribeModel = scribeModelSetting.includes(':') ? scribeModelSetting.split(':')[1] : scribeModelSetting;
+    }
+
+    const result = await runtime.spawnWorker(workerId, task, scribeModel, undefined, undefined, stickyNotes);
     if (!result.success) return;
   }
 
   /** Public accessor for the NudgeManager (used by /nudge REPL command via CommandContext). */
   getNudgeManager(): NudgeManager { return this._nudgeManager; }
 
-  /** Load nudges from core-nudges.md for the given channel. Called once per channel after first user message. */
-  ensureMaintenanceSchedule(chName: string): void {
-    this._nudgeManager.loadForChannel(chName);
+  /**
+   * Start or update the recurring prompt for a channel.
+   * Reads .armaws/reminder_prompt.md and creates a recurring nudge job via ScheduledPrompt.
+   * Called on first message and on config change.
+   */
+  private _manageRecurringPrompt(chName: string): void {
+    const settings = UserConfig.instance().settings.session;
+    if (!settings.recurringPromptEnabled) {
+      // Cancel any existing prompt
+      this._recurringPrompts.get(chName)?.stop();
+      this._recurringPrompts.delete(chName);
+      return;
+    }
+
+    // Read the reminder prompt file
+    const armaPath = getArmaPath(chName);
+    const promptPath = join(armaPath, 'reminder_prompt.md');
+    if (!existsSync(promptPath)) return;
+    const prompt = readFileSync(promptPath, 'utf-8').trim();
+    if (!prompt) return;
+
+    // Get or create the ScheduledPrompt for this channel
+    let sp = this._recurringPrompts.get(chName);
+    if (!sp) {
+      sp = new ScheduledPrompt();
+      this._recurringPrompts.set(chName, sp);
+    }
+
+    // The NudgeStore should already be registered by now (via registerStore in joinChannel/spawnChannelBackground)
+    const store = this._nudgeManager.getStore(chName);
+    if (!store) return;
+    sp.setStore(store);
+
+    const intervalMs = (settings.recurringPromptInterval || 5) * 60 * 1000;
+    sp.start(prompt, intervalMs, { hidden: true, fireNow: false });
+  }
+
+  /** Reload all recurring prompts (used on config change). */
+  private _reloadRecurringPrompts(): void {
+    for (const chName of this._recurringPrompts.keys()) {
+      this._manageRecurringPrompt(chName);
+    }
   }
 
   /** Ensure the channel's notes.md exists in the workspace, seeded from core-notes.md template. */
@@ -145,6 +256,30 @@ export class ChannelLifecycle {
       const driftTemplate = join(armaDataDir(), 'core-architecture-drift.md');
       if (existsSync(driftTemplate)) {
         copyFileSync(driftTemplate, archDrift);
+      }
+    }
+
+    // Seed reminder_prompt.md alongside notes.md if it doesn't exist
+    const reminderPath = join(armaPath, 'reminder_prompt.md');
+    if (!existsSync(reminderPath)) {
+      writeFileSync(reminderPath, [
+        '# Reminder Prompt',
+        '',
+        'Edit this file to set the recurring prompt for this channel.',
+        'The prompt is injected into the agent conversation on a configurable interval.',
+        '',
+        'Example:',
+        '  - Check for any new drift in the architecture docs and update them.',
+        '  - Review recent changes and suggest improvements.',
+      ].join('\n'), 'utf-8');
+    }
+
+    // Seed history-scribe.md if it doesn't exist
+    const scribePath = join(armaPath, 'history-scribe.md');
+    if (!existsSync(scribePath)) {
+      const scribeTemplate = join(armaDataDir(), 'core-history-scribe.md');
+      if (existsSync(scribeTemplate)) {
+        copyFileSync(scribeTemplate, scribePath);
       }
     }
   }
@@ -268,6 +403,7 @@ export class ChannelLifecycle {
           }
         }, { idleCheck: () => this.channelAgents.get(chName)?.status === 'idle' });
         this._nudgeManager.registerStore(chName, nudgeResult.store);
+        this._manageRecurringPrompt(chName);
         this.deps.refreshProviderStats();
         this.deps.callbacks.writeMessage('system', '*', `Connected to ${provType} (${model}) [threaded]`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
@@ -295,7 +431,22 @@ export class ChannelLifecycle {
         const agent = this.createChannelAgent(chName, adapter, model, provType, defaultProvider.name);
         agent.setWorkspace(getChannelRoot(chName) + ':/tmp:/dev');
         this.channelAgents.set(chName, agent);
-        this.deps.refreshProviderStats();
+        // Create nudge store for non-threaded channel
+        const nudgeResult = createNudgeTools((prompt, _jobId, hidden) => {
+          if (!hidden) {
+            this.deps.callbacks.writeMessage('system', 'info', `[nudge] ${prompt}`, chName);
+          }
+          const a = this.channelAgents.get(chName);
+          if (a) {
+            if (a.status === 'idle') {
+              (async () => { for await (const _ of a.sendMessageStreaming(prompt)) {} })().catch(e => this.deps.callbacks.writeMessage('system', 'err', `Stream error: ${e.message}`, chName));
+            } else {
+              a.injectMessage(prompt);
+            }
+          }
+        }, { idleCheck: () => this.channelAgents.get(chName)?.status === 'idle' });
+        this._nudgeManager.registerStore(chName, nudgeResult.store);
+        this._manageRecurringPrompt(chName);
         this.deps.callbacks.writeMessage('system', '*', `Connected to ${defaultProvider.name ?? provType} (${model})`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
         this.deps.callbacks.writeMessage('system', 'conn', `${chName} connected → ${provType}/${model}`, '#logs');
@@ -324,10 +475,9 @@ export class ChannelLifecycle {
     this.ensureChannelNotes(chName);
 
     const uc = UserConfig.instance();
+    const useThreads = this.deps.config.session?.useThreads && this.deps.threadCoordinator;
     const defaultProvider = uc.providers?.[0] ?? this.deps.config.providers?.[0];
     const defaultModel = uc.defaultModel || this.deps.config.defaultModel;
-    const useThreads = this.deps.config.session?.useThreads && this.deps.threadCoordinator;
-
     if (useThreads && defaultProvider && defaultModel) {
       const provType = defaultProvider.type ?? defaultProvider;
       const model = defaultModel;
@@ -402,6 +552,8 @@ export class ChannelLifecycle {
     this.channelAgents.delete(name);
 
     this._nudgeManager.unregisterStore(name);
+    this._recurringPrompts.get(name)?.stop();
+    this._recurringPrompts.delete(name);
 
     const runtime = this.channelRuntimes.get(name);
     if (runtime) {
@@ -465,6 +617,11 @@ export class ChannelLifecycle {
         role: 'system',
         content: `[Rolling dropoff — dropped ${drop} oldest messages to 4500]`,
       } as any);
+      // Fire HistoryScribe on prune if enabled and agent is idle
+      const settings = UserConfig.instance().settings.session;
+      if (settings.historyScribeEnabled && settings.scribeOnPrune && agent.status === 'idle') {
+        this._spawnHistoryScribeWorker(channelName).catch(() => {});
+      }
     }
 
     const bareName = channelName.startsWith('#') ? channelName.slice(1) : channelName;
@@ -545,9 +702,10 @@ export class ChannelLifecycle {
       });
     }
 
-    // Restore turn count but NOT token totals — tokens are per-session
+    // Don't restore turn count — start fresh each session. The cache
+    // efficiency check uses turnCount to guard against cold-cache warnings.
     if (agent) {
-      agent.turnCount = state.turnCount || 0;
+      agent.turnCount = 0;
     }
 
     if (state.chatMessages && state.chatMessages.length > 0) {
@@ -558,7 +716,7 @@ export class ChannelLifecycle {
     }
 
     this.deps.callbacks.writeMessage('system', '*',
-      `── Session restored (${entry.turnCount} turns, ${entry.model}) ──`, chName);
+      `── Session restored (0 turns, ${entry.model}) ──`, chName);
 
     if (state.children && state.children.length > 0) {
       for (const child of state.children) {

@@ -26,8 +26,6 @@ export function registerSessionSchemas(pane: ConfigPane): void {
       { id: 'maxTurns', status: 'active', cells: { setting: 'Max Turns', value: String(s.maxTurns), type: 'number' } },
       { id: 'timeout', status: 'active', cells: { setting: 'Conversation Timeout', value: `${s.conversationTimeout}m`, type: 'text' } },
       { id: 'braveApiKey', status: 'active', cells: { setting: 'Brave API Key', value: cfg.getPath('web.braveApiKey') ?? '', type: 'text', description: 'API key for Brave search engine (set via web.braveApiKey in config)' } },
-      { id: 'idleCleanupEnabled', status: 'active', cells: { setting: 'Idle Cleanup', value: s.idleCleanupEnabled ? 'on' : 'off', type: 'toggle', description: 'Spawn cleanup worker after idle timeout' } },
-      { id: 'idleCleanupTimeout', status: 'active', cells: { setting: 'Idle Timeout (min)', value: `${s.idleCleanupTimeout}m`, type: 'text', description: 'Minutes of idle before cleanup worker spawns' } },
       { id: 'driftMaxSize', status: 'active', cells: { setting: 'Drift Max Size (MB)', value: String((cfg.getPath('drift.maxSizeBytes') as number ?? 50) / (1024 * 1024)), type: 'number', description: 'Max size of drift snapshot store in MB (oldest pruned first when exceeded). Default 50MB.' } },
       { id: 'summarizationModel', status: 'active', cells: { setting: 'Summary Model', value: cfg.getPath('web.summarizationModel') ?? '', type: 'text', description: 'Model to use for page summarization in deep_research (empty = use channel model)' } },
     ],
@@ -180,5 +178,77 @@ export function registerDisplaySchemas(pane: ConfigPane): void {
     sortColumn: 'setting',
     sortAsc: true,
     multiSelect: false,
+  });
+}
+
+/** Register the History Management configuration panel (auto-nudge, HistoryScribe triggers, intervals).
+ * @param {ConfigPane} pane - The ConfigPane instance to register schemas on.
+ */
+export function registerHistorySchemas(pane: ConfigPane): void {
+  const cfg = UserConfig.instance();
+  const s = cfg.settings.session;
+  registerSchema(pane, 'history', {
+    id: 'history',
+    title: 'History',
+    fields: [
+      { key: 'setting', label: 'Setting', width: 26, sortable: true, detailType: 'readonly' },
+      { key: 'value', label: 'Value', width: 18, detailType: 'text' },
+      { key: 'type', label: 'Type', width: 8, detailType: 'readonly' },
+      { key: 'description', label: 'Description', listVisible: false, detailType: 'readonly' },
+    ],
+    actions: [],
+    rows: [
+      { id: 'recurringPromptEnabled', status: 'active', cells: { setting: 'Recurring Prompt', value: s.recurringPromptEnabled ? 'on' : 'off', type: 'toggle', description: 'Recurring prompt from reminder_prompt.md (adjusts timing live)' } },
+      { id: 'recurringPromptInterval', status: s.recurringPromptEnabled ? 'active' : 'inactive', cells: { setting: '  Prompt Interval (min)', value: `${s.recurringPromptInterval}m`, type: 'text', description: 'Minutes between recurring prompt firings' } },
+      { id: 'historyScribeEnabled', status: 'active', cells: { setting: 'Scribe Worker', value: s.historyScribeEnabled ? 'on' : 'off', type: 'toggle', description: 'Enable HistoryScribe background worker' } },
+      { id: 'scribeOnPrune', status: s.historyScribeEnabled ? 'active' : 'inactive', cells: { setting: '  Scribe on Prune', value: s.scribeOnPrune ? 'on' : 'off', type: 'toggle', description: 'Fire scribe when state file rolls 5500→4500' } },
+      { id: 'scribeOnIdle', status: s.historyScribeEnabled ? 'active' : 'inactive', cells: { setting: '  Scribe on Idle', value: s.scribeOnIdle ? 'on' : 'off', type: 'toggle', description: 'Fire scribe after channel idle timeout' } },
+      { id: 'historyScribeTimeout', status: (s.historyScribeEnabled && s.scribeOnIdle) ? 'active' : 'inactive', cells: { setting: '    Idle Timeout (min)', value: `${s.historyScribeTimeout}m`, type: 'text', description: 'Minutes idle before scribe fires' } },
+      { id: 'scribeIntervalEnabled', status: s.historyScribeEnabled ? 'active' : 'inactive', cells: { setting: '  Scribe on Timer', value: s.scribeIntervalEnabled ? 'on' : 'off', type: 'toggle', description: '⚠ Fire scribe on timer (full state injection, expensive!)' } },
+      { id: 'scribeIntervalMinutes', status: (s.historyScribeEnabled && s.scribeIntervalEnabled) ? 'active' : 'inactive', cells: { setting: '    Timer Interval (min)', value: `${s.scribeIntervalMinutes}m`, type: 'text', description: 'How often to run timer-based scribe' } },
+      { id: 'historyScribeMaxMessages', status: s.historyScribeEnabled ? 'active' : 'inactive', cells: { setting: '  Max Messages', value: String(s.historyScribeMaxMessages), type: 'number', description: '0 = all messages, N = last N messages' } },
+      { id: 'historyScribeModel', status: s.historyScribeEnabled ? 'active' : 'inactive', cells: { setting: '  Scribe Model', value: s.historyScribeModel || '(default)', type: 'choice', description: 'Model for scribe worker. Left/right arrow to cycle. (default) = use channel model.' } },
+    ],
+    sortColumn: undefined,
+    sortAsc: false,
+    multiSelect: false,
+  });
+
+  // Detail config — make scribe model a choice picker with all configured models
+  pane.registerDetailConfig('history', (row) => {
+    const cellVal = row.cells['value'] ?? '';
+    const rowType = row.cells['type'] ?? 'text';
+    const rowDesc = row.cells['description'] ?? '';
+
+    if (row.id === 'historyScribeModel') {
+      // Build model choices from configured providers
+      const modelChoices: Array<{ id: string; label: string }> = [
+        { id: '', label: '(default)' },
+      ];
+      const providers = UserConfig.instance().providers;
+      for (const p of providers) {
+        const providerName = p.name || p.type;
+        for (const m of (p.models || [])) {
+          const modelName = typeof m === 'string' ? m : m.name;
+          modelChoices.push({ id: `${providerName}:${modelName}`, label: `${providerName}:${modelName}` });
+        }
+      }
+      const currentVal = cellVal || '';
+      return {
+        fields: [
+          { key: 'setting', label: 'Setting', type: 'readonly', value: row.cells['setting'] ?? '' },
+          { key: 'value', label: 'Model', type: 'choice', value: currentVal, choices: modelChoices, description: rowDesc },
+        ],
+      };
+    }
+
+    const isToggle = rowType === 'toggle';
+    const value = isToggle ? (cellVal === 'on' ? true : false) : (cellVal ?? '');
+    return {
+      fields: [
+        { key: 'setting', label: 'Setting', type: 'readonly', value: row.cells['setting'] ?? '' },
+        { key: 'value', label: 'Value', type: isToggle ? 'toggle' : 'text', value, description: rowDesc },
+      ],
+    };
   });
 }

@@ -115,7 +115,7 @@ export async function handleUserMessage(
       logError('repl', `Stream error on ${activeChannel}`, err);
       deps.setProcessing(activeChannel, false);
       const tui = deps.getTui();
-      if (tui) { tui.stopThinking(); tui.finalizeStreamMessage(activeChannel); }
+      if (tui) { tui.stopThinking(activeChannel); tui.finalizeStreamMessage(activeChannel); }
       if (deps.isAuthError(err)) {
         logWarn('repl', `Auth error on ${activeChannel}, triggering re-auth`);
         deps.handleAuthError(activeChannel, agent, err);

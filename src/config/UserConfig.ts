@@ -24,8 +24,16 @@ export interface SessionSettings {
   conversationTimeout: number;
   budgetEnabled: boolean;
   budgetAmount: number;
-  idleCleanupEnabled: boolean;
-  idleCleanupTimeout: number;
+  historyScribeEnabled: boolean;
+  historyScribeTimeout: number;
+  historyScribeMaxMessages: number;
+  recurringPromptEnabled: boolean;
+  recurringPromptInterval: number;
+  scribeOnPrune: boolean;
+  scribeOnIdle: boolean;
+  scribeIntervalEnabled: boolean;
+  scribeIntervalMinutes: number;
+  historyScribeModel: string;
 }
 
 /** Context window settings. */
@@ -113,8 +121,16 @@ const DEFAULT_SETTINGS: UserSettings = {
     conversationTimeout: 60,
     budgetEnabled: true,
     budgetAmount: 10.0,
-    idleCleanupEnabled: false,
-    idleCleanupTimeout: 15,
+    historyScribeEnabled: true,
+    historyScribeTimeout: 15,
+    historyScribeMaxMessages: 50,
+    recurringPromptEnabled: true,
+    recurringPromptInterval: 5,
+    scribeOnPrune: true,
+    scribeOnIdle: true,
+    scribeIntervalEnabled: false,
+    scribeIntervalMinutes: 60,
+    historyScribeModel: '',
   },
   context: {
     maxTokens: 200000,
@@ -318,12 +334,26 @@ export class UserConfig {
     return ['red', 'fire', 'ice', 'green', 'purple', 'synthwave', 'midnight', 'pro', 'random'];
   }
 
+  /** Deep merge — nested properties from `overrides` fill in missing keys from `defaults`. */
+  private _deepMerge<T extends Record<string, any>>(defaults: T, overrides: Partial<T>): T {
+    const result: any = { ...defaults };
+    for (const key of Object.keys(overrides)) {
+      const val = (overrides as any)[key];
+      if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+        result[key] = this._deepMerge(result[key] ?? {}, val);
+      } else {
+        result[key] = val;
+      }
+    }
+    return result as T;
+  }
+
   private load(): UserSettings {
     try {
       if (existsSync(this._configPath)) {
         const raw = readFileSync(this._configPath, 'utf-8');
         const parsed = JSON.parse(raw);
-        const merged = { ...DEFAULT_SETTINGS, ...parsed };
+        const merged = this._deepMerge(DEFAULT_SETTINGS, parsed);
         if (Array.isArray(merged.providers)) {
           merged.providers = merged.providers.map((p: any) =>
             typeof p === 'string' ? { type: p, models: [] } : p
