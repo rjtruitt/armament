@@ -413,15 +413,23 @@ export class McpManager {
           existing = JSON.parse(fs.readFileSync(file, 'utf8'));
         }
       } catch (e) { logError("mcp", "Error", e); }
-      const data = [...this.mcpServers.entries()].map(([n, s]) => {
+      // Start with in-memory servers (merged with file for config persistence)
+      const inMem = new Map([...this.mcpServers.entries()].map(([n, s]) => {
         const prev = existing.find(e => e.name === n);
         const config = prev ? { ...prev.config, ...s.config } : s.config;
         // Deep-merge auth: file-persisted tokens/clientId must survive in-memory config overlay
         if (prev?.config?.auth) {
           config.auth = { ...prev.config.auth, ...(s.config.auth || {}) };
         }
-        return { name: n, config };
-      });
+        return [n, { name: n, config }] as const;
+      }));
+      // Preserve file-only entries that aren't in memory (don't drop servers on persist)
+      for (const entry of existing) {
+        if (!inMem.has(entry.name)) {
+          inMem.set(entry.name, entry);
+        }
+      }
+      const data = [...inMem.values()];
       fs.writeFileSync(file, JSON.stringify(data, null, 2));
     } catch {
       // best-effort
