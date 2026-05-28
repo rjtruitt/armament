@@ -74,4 +74,9 @@ export class DriftManager implements IDriftManager {
       paths: stats.paths,
     };
   }
+
+  /** Get per-file snapshot stats for tree view. */
+  async getPerFileStats(): Promise<Array<{ path: string; count: number; totalSize: number; newest: number }>> {
+    return this._store.getPerFileStats();
+  }
 }

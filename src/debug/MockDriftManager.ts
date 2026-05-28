@@ -79,4 +79,16 @@ export class MockDriftManager implements IDriftManager {
     });
     return before - this._entries.length;
   }
+
+  async getPerFileStats(): Promise<Array<{ path: string; count: number; totalSize: number; newest: number }>> {
+    const map = new Map<string, { count: number; totalSize: number; newest: number }>();
+    for (const e of this._entries) {
+      const existing = map.get(e.path) ?? { count: 0, totalSize: 0, newest: 0 };
+      existing.count++;
+      existing.totalSize += e.size;
+      if (e.timestamp > existing.newest) existing.newest = e.timestamp;
+      map.set(e.path, existing);
+    }
+    return [...map.entries()].map(([path, stats]) => ({ path, ...stats }));
+  }
 }

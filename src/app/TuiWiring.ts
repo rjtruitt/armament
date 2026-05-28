@@ -254,16 +254,16 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
       deps.setActiveToolNames(deps.catalogManager.activeToolNames);
     }
     for (const ch of manifest.channels) {
-      // Register restored tools on this channel's agent
-      if (restoredTools.length > 0) {
-        const agent = deps.getChannelAgent(ch.name);
-        if (agent && typeof (agent as any).registerTools === 'function') {
-          (agent as any).registerTools(restoredTools);
-        }
-      }
       const state = await deps.sessionPersistence.loadChannelState(ch.name);
       if (state) {
         await deps.resumeChannel(ch, state);
+        // Register restored tools AFTER resumeChannel (which resets the agent's tool executor)
+        if (restoredTools.length > 0) {
+          const agent = deps.getChannelAgent(ch.name);
+          if (agent) {
+            agent.registerTools(restoredTools);
+          }
+        }
       } else {
         tui.writeMessage('system', 'info', `○ Suspended (no state): ${ch.name} (${ch.model})`, '#control');
       }

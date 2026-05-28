@@ -149,5 +149,133 @@ export function createDriftTools(manager: DriftManager, channel: string): ITool[
     new DriftSnapshotListTool(manager, channel),
     new DriftRollbackTool(manager, channel),
     new DriftPruneTool(manager, channel),
+    new DriftTreeTool(manager),
   ];
+}
+
+/** DriftTreeTool — browse the drift snapshot filesystem like find/ls/du. */
+export class DriftTreeTool implements ITool {
+  readonly name = 'drift_tree';
+  readonly description = `Browse the drift snapshot filesystem as a directory tree. Shows tracked files grouped by directory, with snapshot count and size per file. Use --path to zoom in on a subtree, --depth to control recursion, --du to show sizes, --sort to order by count/size/name.`;
+
+  readonly schema = z.object({
+    path: z.string().optional().describe('Directory prefix to show (e.g. "armament/src/app"). Omit for root.'),
+    depth: z.number().optional().describe('Max directory depth to recurse (default: 2, max: 5).'),
+    du: z.boolean().optional().describe('Show human-readable sizes for each file/dir.'),
+    sort: z.enum(['count', 'size', 'name']).optional().describe('Sort by snapshot count, total size, or name (default: count).'),
+  });
+
+  constructor(private manager: DriftManager) {}
+
+  async execute(args: unknown, _ctx: ToolContext): Promise<ToolResult> {
+    const { path, depth, du, sort } = args as { path?: string; depth?: number; sort?: 'count' | 'size' | 'name'; du?: boolean };
+    try {
+      const stats = await this.manager.getPerFileStats();
+      const prefix = path ? (path.endsWith('/') ? path : path + '/') : '';
+      const maxDepth = Math.min(depth ?? 2, 5);
+      const sortBy = sort ?? 'count';
+
+      // Build tree from flat file list
+      interface TreeNode {
+        name: string;
+        isDir: boolean;
+        count: number;
+        totalSize: number;
+        children: Map<string, TreeNode>;
+      }
+
+      const root: TreeNode = { name: '(drift)', isDir: true, count: 0, totalSize: 0, children: new Map() };
+
+      // Filter + insert into tree
+      const filtered = prefix
+        ? stats.filter(s => s.path.startsWith(prefix))
+        : stats;
+
+      for (const f of filtered) {
+        let relPath = prefix ? f.path.slice(prefix.length) : f.path;
+        if (relPath.startsWith('/')) relPath = relPath.slice(1);
+        const parts = relPath.split('/');
+        let node = root;
+        // Walk directory parts
+        for (let i = 0; i < parts.length - 1; i++) {
+          const dirName = parts[i];
+          if (!dirName) continue;
+          if (!node.children.has(dirName)) {
+            node.children.set(dirName, { name: dirName, isDir: true, count: 0, totalSize: 0, children: new Map() });
+          }
+          node = node.children.get(dirName)!;
+        }
+        // File leaf
+        const fileName = parts[parts.length - 1];
+        if (!fileName) continue;
+        const leaf: TreeNode = { name: fileName, isDir: false, count: f.count, totalSize: f.totalSize, children: new Map() };
+        node.children.set(fileName, leaf);
+      }
+
+      // Propagate counts up
+      function accumulate(node: TreeNode): void {
+        node.count = 0;
+        node.totalSize = 0;
+        for (const child of node.children.values()) {
+          accumulate(child);
+          node.count += child.count;
+          node.totalSize += child.totalSize;
+        }
+      }
+      accumulate(root);
+
+      // Render tree (branching chars, depth-limited)
+      const lines: string[] = [];
+      const sortFns: Record<string, (a: TreeNode, b: TreeNode) => number> = {
+        count: (a, b) => b.count - a.count,
+        size: (a, b) => b.totalSize - a.totalSize,
+        name: (a, b) => a.name.localeCompare(b.name),
+      };
+      const sorter = sortFns[sortBy];
+
+      function fmtSize(bytes: number): string {
+        if (bytes < 1024) return `${bytes}B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+      }
+
+      function render(node: TreeNode, indent: string, isLast: boolean, d: number): void {
+        const prefix2 = isLast ? '└── ' : '├── ';
+        const connector = isLast ? '    ' : '│   ';
+        let label = node.name;
+        if (node.isDir) label += '/';
+
+        if (du) {
+          const sizeStr = fmtSize(node.totalSize);
+          label += `  (${node.count} snaps, ${sizeStr})`;
+        } else {
+          label += `  (${node.count})`;
+        }
+        lines.push(indent + prefix2 + label);
+
+        if (node.isDir && d < maxDepth) {
+          const sorted = [...node.children.values()].sort(sorter);
+          for (let i = 0; i < sorted.length; i++) {
+            const child = sorted[i];
+            const last = i === sorted.length - 1;
+            render(child, indent + connector, last, d + 1);
+          }
+        } else if (node.isDir && d >= maxDepth && node.children.size > 0) {
+          lines.push(indent + connector + `(${node.children.size} entries — use --depth ${d + 1} or --path to drill in)`);
+        }
+      }
+
+      const sortedRoot = [...root.children.values()].sort(sorter);
+      const header = `Drift tree${prefix ? ` for "${prefix.slice(0, -1)}"` : ''} (${filtered.length} files, ${filtered.reduce((s, f) => s + f.count, 0)} total snapshots)`;
+      lines.push(header);
+      lines.push('─'.repeat(header.length));
+      for (let i = 0; i < sortedRoot.length; i++) {
+        render(sortedRoot[i], '', i === sortedRoot.length - 1, 0);
+      }
+
+      return { success: true, data: lines.join('\n') };
+    } catch (e: unknown) {
+      return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
+    }
+  }
 }

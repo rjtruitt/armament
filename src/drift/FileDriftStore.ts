@@ -150,6 +150,23 @@ export class FileDriftStore {
     return all;
   }
 
+  /** Get per-file snapshot stats for tree view: path, count, total size bytes. */
+  async getPerFileStats(): Promise<Array<{ path: string; count: number; totalSize: number; newest: number }>> {
+    const index = loadIndex(this._driftDir);
+    const results: Array<{ path: string; count: number; totalSize: number; newest: number }> = [];
+    for (const [path, entries] of Object.entries(index.files)) {
+      let totalSize = 0;
+      let newest = 0;
+      for (const e of entries) {
+        totalSize += e.size;
+        if (e.ts > newest) newest = e.ts;
+      }
+      results.push({ path, count: entries.length, totalSize, newest });
+    }
+    results.sort((a, b) => b.count - a.count);
+    return results;
+  }
+
   /**
    * Find a single snapshot by id.
    */
