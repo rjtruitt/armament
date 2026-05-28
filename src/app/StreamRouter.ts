@@ -152,20 +152,11 @@ export class StreamRouter {
           if (!chunk.text) break;
           bus.emit({ type: 'thinking', channel: target.channel, text: chunk.text });
           if (showText) {
-            // Between tools: don't create a new message for thinking (shows in overlay only)
-            if (inToolCall) {
-              // Only create stream if there's already one (e.g. text was appended before tool completed)
-              // Otherwise skip — thinking goes to overlay
-              if (tui?.isChannelStreaming(target.channel)) {
-                tui?.appendStreamThinking(chunk.text, target.channel);
-              }
-            } else {
-              // Before first tool or after all tools — normal thinking display
-              if (!tui?.isChannelStreaming(target.channel)) {
-                tui?.beginStreamMessage(target.nick, target.channel);
-              }
-              tui?.appendStreamThinking(chunk.text, target.channel);
+            // Always show thinking in the buffer — user needs to see what's happening
+            if (!tui?.isChannelStreaming(target.channel)) {
+              tui?.beginStreamMessage(target.nick, target.channel);
             }
+            tui?.appendStreamThinking(chunk.text, target.channel);
           }
           break;
 

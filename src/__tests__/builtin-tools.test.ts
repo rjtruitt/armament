@@ -456,7 +456,10 @@ describe('getDefaultTools', () => {
     expect(names).toContain('append_file');
     expect(names).toContain('grep');
     expect(names).toContain('web_fetch');
+    expect(names).toContain('web_search');
+    expect(names).toContain('deep_research');
     expect(names).toContain('list_files');
-    expect(tools.length).toBe(8);
+    expect(names).toContain('read_worker_state');
+    expect(tools.length).toBe(11);
   });
 });

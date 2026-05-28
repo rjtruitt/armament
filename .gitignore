@@ -12,8 +12,9 @@ armament
 !.arma/core-architecture-drift.md
 *.arma.context
 .env
-.env.*
 .env.local
+.env.*
+!.env.example
 *.log
 npm-debug.log*
 coverage/

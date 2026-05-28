@@ -4,6 +4,7 @@ import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import { homedir } from 'node:os';
 import open from 'open';
+import { UserConfig } from '../config/index.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { OAuthClientMetadata, OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 
@@ -112,6 +113,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
    * Save tokens.
    */
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    if (UserConfig.instance().getNoPersist()) return;
     const file = this.mcpJsonPath();
     try {
       const configs = this.loadAllConfigs();
@@ -250,6 +252,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   private persistClientId(clientId: string): void {
+    if (UserConfig.instance().getNoPersist()) return;
     const file = this.mcpJsonPath();
     try {
       const configs = this.loadAllConfigs();

@@ -201,10 +201,12 @@ export class TuiConfigPanes {
           const updated = [...existing, newEntry];
           if (this.opts.menuConfig) this.opts.menuConfig.mcpConfigs = updated;
           // Write to disk so onMcpConfigChange can find it on subsequent edits
-          Promise.all([import('node:fs'), import('node:path'), import('node:os')]).then(([fs, path, os]) => {
-            const file = path.join(os.homedir(), '.arma', 'mcp.json');
-            fs.writeFileSync(file, JSON.stringify(updated, null, 2), 'utf8');
-          }).catch(() => {});
+          if (!UserConfig.instance().getNoPersist()) {
+            Promise.all([import('node:fs'), import('node:path'), import('node:os')]).then(([fs, path, os]) => {
+              const file = path.join(os.homedir(), '.arma', 'mcp.json');
+              fs.writeFileSync(file, JSON.stringify(updated, null, 2), 'utf8');
+            }).catch(() => {});
+          }
           this.refreshSchemas('mcp');
           this.delegate.render();
           // Open detail view on the new row

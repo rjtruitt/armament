@@ -256,7 +256,7 @@ describe('WakeupTool', () => {
     const tool = new WakeupTool(store);
     await tool.execute({ delay: '30s', prompt: 'wake', reason: 'test' }, ctx);
     vi.advanceTimersByTime(30_000);
-    expect(executor).toHaveBeenCalledWith('wake', 'nudge-1', false);
+    expect(executor).toHaveBeenCalledWith('wake', 'nudge-1', true);
     store.shutdown();
   });
 

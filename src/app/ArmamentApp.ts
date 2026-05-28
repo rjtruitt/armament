@@ -246,6 +246,8 @@ export class ArmamentApp extends ReplPublicAPI {
           state.interrupted = true;
           state.interruptCount++;
         }
+        // Also set BaseRepl's singleton flag for wasInterrupted()
+        this.interrupted = true;
         if (ch && this._threadCoordinator) this._threadCoordinator.interrupt(ch);
         this.tuiMode?.stopThinking(ch);
         this.tuiMode?.cancelStreamMessage(this.activeChannelName);
@@ -350,6 +352,7 @@ export class ArmamentApp extends ReplPublicAPI {
     state.processing = true;
     state.interrupted = false;
     state.interruptCount = 0;
+    this.interrupted = false;
 
     try {
       if (channel === '#approvals' && this._pendingApprovals.size > 0) {
@@ -651,7 +654,7 @@ export class ArmamentApp extends ReplPublicAPI {
    */
   async handleUserMessage(input: string): Promise<string | void> {
     return doHandleUserMessage(input, {
-      getInterrupted: () => { const ch = this.activeChannelName; return ch ? this.getChannelState(ch).interrupted : false; },
+      getInterrupted: () => { const ch = this.activeChannelName; return (ch ? this.getChannelState(ch).interrupted : false) || this.interrupted; },
       getTurnCount: () => this.turnCount,
       setTurnCount: (n) => { this.turnCount = n; },
       getConfig: () => this.config,

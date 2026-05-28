@@ -84,6 +84,7 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
       });
     },
     onMcpConfigChange: (serverName: string, fieldPath: string, value: any) => {
+      if (UserConfig.instance().getNoPersist()) return;
       const configs = deps.mcpIntegration.loadMcpConfig();
       const entry = configs.find(c => c.name === serverName);
       if (entry) {
@@ -120,6 +121,7 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
     },
     onMcpShow: () => { deps.mcpIntegration.showMcpPicker(); },
     onMcpRemove: (serverName: string) => {
+      if (UserConfig.instance().getNoPersist()) return;
       deps.mcpIntegration.disconnectMcp(serverName).then(() => {
         const configs = deps.mcpIntegration.loadMcpConfig().filter(c => c.name !== serverName);
         const file = path.join(homedir(), '.arma', 'mcp.json');

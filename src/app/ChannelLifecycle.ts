@@ -419,6 +419,7 @@ export class ChannelLifecycle {
         this.deps.refreshProviderStats();
         this.deps.callbacks.writeMessage('system', '*', `Connected to ${provType} (${model}) [threaded]`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
+        this.deps.callbacks.stopThinking(chName);
         this.deps.callbacks.writeMessage('system', 'conn', `${chName} thread spawned → ${provType}/${model}`, '#logs');
       }).catch((err: Error) => {
         this.deps.callbacks.writeMessage('system', 'error', `Failed to spawn thread: ${err.message}`);
@@ -461,6 +462,7 @@ export class ChannelLifecycle {
         this._manageRecurringPrompt(chName);
         this.deps.callbacks.writeMessage('system', '*', `Connected to ${defaultProvider.name ?? provType} (${model})`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
+        this.deps.callbacks.stopThinking(chName);
         this.deps.callbacks.writeMessage('system', 'conn', `${chName} connected → ${provType}/${model}`, '#logs');
       }).catch((err: Error) => {
         this.deps.callbacks.writeMessage('system', '*', `Failed to connect: ${err.message}`);

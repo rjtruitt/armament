@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { homedir } from 'node:os';
+import { UserConfig } from '../config/index.js';
 import type { TuiRenderer } from './TuiRenderer.js';
 import type { SessionState } from './SessionState.js';
 import type { SessionPersistence } from '../session/index.js';
@@ -87,6 +88,7 @@ export class ContextManager {
    * Save context.
    */
   saveContext(title?: string, description?: string): string {
+    if (UserConfig.instance().getNoPersist()) return '';
     const dir = this.getContextDir();
     fs.mkdirSync(dir, { recursive: true });
     const slug = title ? title.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() : `context-${Date.now()}`;

@@ -371,6 +371,11 @@ export class UserConfig {
     this._noPersist = val;
   }
 
+  /** Returns whether persistence is disabled (used by tests). */
+  getNoPersist(): boolean {
+    return this._noPersist;
+  }
+
   private save(): void {
     if (this._noPersist) return;
     try {

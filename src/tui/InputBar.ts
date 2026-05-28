@@ -205,6 +205,7 @@ export class InputBar {
     this._text = this._text.slice(0, this._cursorPos) + char + this._text.slice(this._cursorPos);
     this._cursorPos += char.length;
     this._completionDirty = true;
+    this.emit('text:change', { text: this._text });
     this.render();
   }
 
@@ -216,6 +217,7 @@ export class InputBar {
       this._text = this._text.slice(0, this._cursorPos - 1) + this._text.slice(this._cursorPos);
       this._cursorPos--;
       this._completionDirty = true;
+      this.emit('text:change', { text: this._text });
       this.render();
     }
   }
@@ -227,6 +229,7 @@ export class InputBar {
     if (this._cursorPos < this._text.length) {
       this._text = this._text.slice(0, this._cursorPos) + this._text.slice(this._cursorPos + 1);
       this._completionDirty = true;
+      this.emit('text:change', { text: this._text });
       this.render();
     }
   }
@@ -306,10 +309,12 @@ export class InputBar {
       case 'ctrl+u':
         this._text = '';
         this._cursorPos = 0;
+        this.emit('text:change', { text: this._text });
         this.render();
         break;
       case 'ctrl+k':
         this._text = this._text.slice(0, this._cursorPos);
+        this.emit('text:change', { text: this._text });
         this.render();
         break;
       case 'ctrl+w': {
@@ -317,6 +322,7 @@ export class InputBar {
         const trimmed = before.replace(/\S+\s*$/, '');
         this._text = trimmed + this._text.slice(this._cursorPos);
         this._cursorPos = trimmed.length;
+        this.emit('text:change', { text: this._text });
         this.render();
         break;
       }

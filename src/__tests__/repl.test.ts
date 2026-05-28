@@ -1669,10 +1669,10 @@ describe('ArmamentApp - Command Routing', () => {
     expect(spy).toHaveBeenCalledWith('leaving');
   });
 
-  it('should route /spawn to spawnAgent', () => {
+  it('should route /spawn to spawn a subworker with a prompt', () => {
     const spy = vi.spyOn(repl, 'spawnAgent');
-    repl.handleCommand('/spawn coder --model claude-opus-4-0-20250514');
-    expect(spy).toHaveBeenCalledWith('coder', expect.objectContaining({ model: 'claude-opus-4-0-20250514' }));
+    repl.handleCommand('/spawn prodready');
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('should route /kill to killAgent', async () => {
@@ -1707,10 +1707,9 @@ describe('ArmamentApp - Command Routing', () => {
     expect(spy).toHaveBeenCalledWith('coder');
   });
 
-  it('should parse --model flag from /spawn', () => {
-    const spy = vi.spyOn(repl, 'spawnAgent');
-    repl.handleCommand('/spawn analyzer --model gpt-4o --provider openai');
-    expect(spy).toHaveBeenCalledWith('analyzer', expect.objectContaining({ model: 'gpt-4o', provider: 'openai' }));
+  it('should list available prompts when no name given', () => {
+    const result = repl.handleCommand('/spawn');
+    expect(result).toBe(true);
   });
 
   it('should handle /switch with numeric index', () => {

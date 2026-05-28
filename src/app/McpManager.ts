@@ -36,6 +36,10 @@ export class McpManager {
   private mcpServers: Map<string, McpServer> = new Map();
   private callbacks: McpManagerCallbacks;
   private toolExec: McpToolExecution;
+  private _noPersist = false;
+
+  /** Prevent writes to ~/.arma/mcp.json. Used by tests to avoid corrupting real config. */
+  setNoPersist(val: boolean): void { this._noPersist = val; }
 
   constructor(callbacks: McpManagerCallbacks) {
     this.callbacks = callbacks;
@@ -401,8 +405,9 @@ export class McpManager {
     return 'stdio';
   }
 
-  /** Persist MCP server configs to ~/.armament/mcp.json. */
+  /** Persist MCP server configs to ~/.arma/mcp.json. */
   persistMcpConfig(): void {
+    if (this._noPersist || UserConfig.instance().getNoPersist()) return;
     const dir = path.join(homedir(), '.arma');
     const file = path.join(dir, 'mcp.json');
     try {

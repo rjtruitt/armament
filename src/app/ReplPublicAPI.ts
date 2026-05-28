@@ -511,7 +511,7 @@ export abstract class ReplPublicAPI extends BaseRepl {
   /**
    * Clear session.
    */
-  clearSession(): void { this._sessionCleared = true; this._contextManager.clearSession(); }
+  clearSession(): void { this._sessionCleared = true; this._contextManager.clearSession(); this.turnCount = 0; }
   /**
    * Export session.
    */

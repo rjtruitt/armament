@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { homedir } from 'node:os';
+import { UserConfig } from '../config/index.js';
 import type { PluginLoader } from '../plugins/index.js';
 import type { TuiRenderer } from './TuiRenderer.js';
 import type { ChannelAgent } from '../providers/index.js';
@@ -192,6 +193,7 @@ export class PluginIntegration {
         data = JSON.parse(fs.readFileSync(mpPath, 'utf-8'));
       }
     } catch {}
+    if (UserConfig.instance().getNoPersist()) return;
     data[name] = { repo };
     fs.writeFileSync(mpPath, JSON.stringify(data, null, 2));
   }

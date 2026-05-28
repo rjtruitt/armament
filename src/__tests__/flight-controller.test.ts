@@ -330,10 +330,10 @@ describe('Provider Pool Integration — Cost Tracking', () => {
     expect(output).toMatch(/\$|cost/i);
   });
 
-  it('should reset cost tracking on /clear', async () => {
+  it('should reset cost tracking on /clear-session', async () => {
     repl.joinChannel('test');
     await repl.handleUserMessage('test');
-    repl.handleCommand('/clear');
+    repl.handleCommand('/clear-session');
     // After clear, usage is still tracked at repl level
     // (clear resets messages and turn count, not cumulative stats)
     expect(repl.getTurnCount()).toBe(0);
@@ -390,11 +390,11 @@ describe('Provider Pool Integration — Token Counting', () => {
     expect(output).toMatch(/context/i);
   });
 
-  it('should reset token counts on /clear via turn count', async () => {
+  it('should reset token counts on /clear-session via turn count', async () => {
     repl.joinChannel('test');
     await repl.handleUserMessage('test');
     expect(repl.getTurnCount()).toBe(1);
-    repl.handleCommand('/clear');
+    repl.handleCommand('/clear-session');
     expect(repl.getTurnCount()).toBe(0);
   });
 });
