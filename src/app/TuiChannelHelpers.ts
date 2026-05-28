@@ -117,7 +117,7 @@ export function reRenderStreamMessage(
   const msg: ChatMessage = { type: 'agent', sender, content: displayContent, timestamp: new Date() };
   const rendered = renderer.renderMessage(msg);
 
-  if (opts.showThinkingInBuffer !== false && thinkingContent) {
+  if (opts.showThinkingInBuffer === true && thinkingContent) {
     const thinkLine = `  \x1b[2m\u{1f4ad} thinking... (${thinkingContent.length} chars)\x1b[0m`;
     rendered.unshift(thinkLine);
   }

@@ -491,6 +491,78 @@ The file must already exist — use write_file first to create it. Content is ap
   }
 }
 
+/** Searches files for a pattern using ripgrep, returning structured file:line:content results. Much faster than grep on large codebases. */
+export class RipgrepTool implements ITool {
+  readonly name = 'ripgrep';
+  workspace?: string;
+  channel?: string;
+  readonly description = `Search files using ripgrep (rg) — much faster than grep on large codebases. Respects .gitignore automatically.
+
+Usage: {"pattern": "function handleAuth", "path": "src/"}
+With glob: {"pattern": "TODO", "path": ".", "glob": "*.ts"}
+With context: {"pattern": "class Foo", "path": ".", "context": 3}
+
+Results returned as "filepath:line_number:content" — one match per line, up to 200 results.
+- pattern: text or regex to search for
+- path: directory or file to search in (default: working directory)
+- glob: file glob pattern (e.g. "*.ts", "*.py"). Uses ripgrep glob syntax.
+- context: number of surrounding context lines to show (default: 0)
+- max_results: max results to return (default: 200, max: 500)
+
+Use this when grep is too slow or you need .gitignore-aware searching. Falls back to grep if ripgrep is not installed.`;
+  readonly schema = z.object({
+    pattern: z.string().describe('Text or regex pattern to search for'),
+    path: z.string().optional().describe('Directory or file to search in (default: working directory)'),
+    glob: z.string().optional().describe('Glob to filter filenames (e.g. "*.ts", "*.py", "*.go")'),
+    context: z.number().optional().describe('Number of surrounding context lines to show (default: 0)'),
+    max_results: z.number().optional().describe('Max results to return (default: 200, max: 500)'),
+  });
+
+  async execute(args: unknown, _context: ToolContext): Promise<ToolResult> {
+    const { pattern, path, glob, context, max_results } = args as { pattern: string; path?: string; glob?: string; context?: number; max_results?: number };
+    if (!pattern) {
+      return { success: false, error: { message: `Missing required "pattern". Correct usage: {"pattern": "searchTerm", "path": "src/"}`, code: 'INVALID_ARGS' } };
+    }
+
+    // Check if rg is available
+    const which = spawnSync('which', ['rg'], { encoding: 'utf-8', timeout: 5000 });
+    if (which.status !== 0 || which.error) {
+      return { success: false, error: { message: 'ripgrep (rg) is not installed on this system. Use the "grep" tool instead, or install ripgrep with: brew install ripgrep / apt install ripgrep / cargo install ripgrep', code: 'NOT_INSTALLED' } };
+    }
+
+    const rgArgs = ['--no-heading', '--color=never', '-n'];
+    if (glob) rgArgs.push('--glob', glob);
+    if (context && context > 0) rgArgs.push('-C', String(Math.min(context, 10)));
+
+    const searchPath = path || '.';
+    const resolvedPath = this.workspace ? await scopePath(searchPath, this.workspace!, this.name, this.channel) : searchPath;
+    rgArgs.push('--', pattern, resolvedPath);
+
+    const result = spawnSync('rg', rgArgs, {
+      encoding: 'utf-8',
+      timeout: 30_000,
+      maxBuffer: MAX_OUTPUT_BYTES,
+      cwd: primaryWorkspace(this.workspace) ?? process.cwd(),
+    });
+
+    if (result.error) {
+      return { success: false, error: { message: result.error.message, code: 'RG_ERROR' } };
+    }
+
+    const output = (result.stdout || '').trim();
+    if (!output) {
+      return { success: true, data: `No matches found for "${pattern}" in ${searchPath}` };
+    }
+
+    const maxLines = Math.min(max_results ?? 200, 500);
+    const lines = output.split('\n');
+    if (lines.length > maxLines) {
+      return { success: true, data: lines.slice(0, maxLines).join('\n') + `\n\n... (${lines.length} total matches, showing first ${maxLines}. Narrow your search with "glob" or a more specific path.)` };
+    }
+    return { success: true, data: `${lines.length} match${lines.length > 1 ? 'es' : ''}:\n${output}` };
+  }
+}
+
 /** Searches files for a pattern using grep, returning structured file:line:content results. */
 export class GrepTool implements ITool {
   readonly name = 'grep';

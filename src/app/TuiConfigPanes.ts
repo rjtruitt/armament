@@ -467,8 +467,11 @@ export class TuiConfigPanes {
       'session.promptCaching.value': 'session.promptCaching',
       'session.maxTurns.value': 'session.maxTurns',
       'session.timeout.value': 'session.conversationTimeout',
+      'session.idleCleanupEnabled.value': 'session.idleCleanupEnabled',
+      'session.idleCleanupTimeout.value': 'session.idleCleanupTimeout',
       // Web
       'session.braveApiKey.value': 'web.braveApiKey',
+      'session.summarizationModel.value': 'web.summarizationModel',
       // Session budget
       'session.budget.enabled.value': 'session.budgetEnabled',
       'session.budget.amount.value': 'session.budgetAmount',

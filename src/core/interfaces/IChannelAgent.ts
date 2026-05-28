@@ -82,6 +82,8 @@ export interface IChannelAgent {
   sendMessage(input: string): Promise<string>;
   sendMessageStreaming(input: string, onToolCall?: (name: string, args: unknown) => void): AsyncGenerator<StreamEvent, void, unknown>;
   sendSystemMessage(content: string, trigger?: string): Promise<string>;
+  /** Set the workspace path for the agent's tools (colon-separated for multi-path). */
+  setWorkspace(dir: string): void;
   markComplete(): void;
   markError(): void;
   registerTool(tool: ITool): void;

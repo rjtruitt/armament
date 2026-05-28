@@ -9,6 +9,8 @@ import { z } from 'zod';
 import * as cheerio from 'cheerio';
 import { LRUCache } from 'lru-cache';
 import { UserConfig } from '../config/UserConfig.js';
+import type { IProviderPool } from '../core/interfaces/IProviderPool.js';
+import { ReadWorkerStateTool } from './ReadWorkerStateTool.js';
 import {
   BashTool,
   ReadFileTool,
@@ -16,6 +18,7 @@ import {
   WriteFileTool,
   AppendFileTool,
   GrepTool,
+  RipgrepTool,
 } from './BuiltinToolDefs.js';
 
 // Re-export tool classes from BuiltinToolDefs so existing consumers can still import from here
@@ -26,6 +29,7 @@ export {
   WriteFileTool,
   AppendFileTool,
   GrepTool,
+  RipgrepTool,
 } from './BuiltinToolDefs.js';
 import { scopePath } from './BuiltinToolDefs.js';
 
@@ -437,7 +441,7 @@ Input types:
 }
 
 /** Returns the standard set of filesystem/shell tools (bash, read, edit, write, append, grep, fetch, list). */
-export function getDefaultTools(opts?: { onWriteComplete?: (reason: string, toolName: string, path: string) => Promise<void> }): ITool[] {
+export function getDefaultTools(opts?: { onWriteComplete?: (reason: string, toolName: string, path: string) => Promise<void>; providerPool?: IProviderPool }): ITool[] {
   const editTool = new EditFileTool();
   const writeTool = new WriteFileTool();
   const appendTool = new AppendFileTool();
@@ -446,6 +450,8 @@ export function getDefaultTools(opts?: { onWriteComplete?: (reason: string, tool
     writeTool.onAfterWrite = opts.onWriteComplete;
     appendTool.onAfterWrite = opts.onWriteComplete;
   }
+  const deepResearchTool = new DeepResearchTool();
+  if (opts?.providerPool) deepResearchTool.providerPool = opts.providerPool;
   return [
     new BashTool(),
     new ReadFileTool(),
@@ -455,8 +461,9 @@ export function getDefaultTools(opts?: { onWriteComplete?: (reason: string, tool
     new GrepTool(),
     new WebFetchTool(),
     new WebSearchTool(),
-    new DeepResearchTool(),
+    deepResearchTool,
     new ListFilesTool(),
+    new ReadWorkerStateTool(),
   ];
 }
 
@@ -681,24 +688,64 @@ function saveResearchCache(entry: ResearchCacheEntry): void {
 /** Deep research tool: searches the web and auto-fetches full content from all results. */
 export class DeepResearchTool implements ITool {
   readonly name = 'deep_research';
-  readonly description = `Do deep research on a topic: searches the web, fetches full content from all result pages, and returns a consolidated summary with source citations.
+  workspace?: string;
+  channel?: string;
+  /** Set by getDefaultTools() or manually if LLM summarization is desired. */
+  providerPool?: IProviderPool;
+  /** Returns true if summarization is configured and usable. */
+  private get _canSummarize(): boolean {
+    return !!UserConfig.instance().settings.web.summarizationModel && !!this.providerPool;
+  }
 
-Use this when you need thorough information on a topic. The tool automatically fetches and reads every result page.
+  get description(): string {
+    const base = `Do deep research on a topic: searches the web, fetches full content from all result pages, and returns a consolidated summary with source citations.\n\nUse this when you need thorough information on a topic. The tool automatically fetches and reads every result page.\n\nUsage: {\"query\": \"impact of AI on software engineering 2025\"}\n       {\"query\": \"python async patterns\", \"max_sources\": 15}`;
+    if (this._canSummarize) {
+      return base + `\n       {\"query\": \"rust async\", \"summarize\": true}\n\n- query: the research topic or question\n- max_sources: max results to search and fetch (default: 10, max: 20)\n- summarize: if true, each page is LLM-summarized before returning (using web.summarizationModel)`;
+    }
+    return base + `\n\n- query: the research topic or question\n- max_sources: max results to search and fetch (default: 10, max: 20)`;
+  }
 
-Usage: {"query": "impact of AI on software engineering 2025"}
-       {"query": "python async patterns", "max_sources": 15}
+  get schema(): z.ZodObject<any> {
+    const base: Record<string, any> = {
+      query: z.string().describe('The research topic or question'),
+      max_sources: z.number().optional().describe('Max sources to fetch in this batch (default: 10, max: 20)'),
+      offset: z.number().optional().describe('Skip this many results (for pagination — use the "remaining" count from the previous response)'),
+    };
+    if (this._canSummarize) {
+      base.summarize = z.boolean().optional().describe('If true, summarize each page via LLM (using web.summarizationModel)');
+    }
+    return z.object(base);
+  }
 
-- query: the research topic or question
-- max_sources: max results to search and fetch (default: 10, max: 20)`;
+  /** Summarize a chunk of text using the configured summarization model. */
+  private async _summarize(text: string, title: string, url: string): Promise<string> {
+    const modelName = UserConfig.instance().settings.web.summarizationModel;
+    if (!modelName || !this.providerPool) return text;
+    try {
+      // Find which provider serves this model
+      const config = UserConfig.instance();
+      let providerType = '';
+      for (const p of config.settings.providers) {
+        const models = (p.models || []).map((m: any) => typeof m === 'string' ? m : m.name);
+        if (models.includes(modelName)) { providerType = p.type; break; }
+      }
+      if (!providerType) return text;
 
-  readonly schema = z.object({
-    query: z.string().describe('The research query or topic'),
-    max_sources: z.number().optional().describe('Max sources to fetch in this batch (default: 10, max: 20)'),
-    offset: z.number().optional().describe('Skip this many results (for pagination — use the "remaining" count from the previous response)'),
-  });
+      const adapter = await this.providerPool.getOrCreate(providerType, modelName);
+      const result = await adapter.invoke([
+        { role: 'system', content: `Summarize this web page content concisely (2-4 sentences capturing the key points). Title: ${title}\nURL: ${url}` },
+        { role: 'user', content: text.slice(0, 30_000) },
+      ]);
+      const summary = result?.content?.trim();
+      return summary && summary.length < text.length ? summary : text;
+    } catch {
+      return text;
+    }
+  }
 
   async execute(args: unknown, _context: ToolContext): Promise<ToolResult> {
-    const { query, max_sources = 10, offset = 0 } = args as { query: string; max_sources?: number; offset?: number };
+    const { query, max_sources = 10, offset = 0, summarize = false } = args as { query: string; max_sources?: number; offset?: number; summarize?: boolean };
+    const shouldSummarize = summarize && this._canSummarize;
     if (!query) return { success: false, error: { message: 'Missing "query".', code: 'INVALID_ARGS' } };
 
     const maxSrc = Math.min(max_sources, 20);
@@ -739,6 +786,10 @@ Usage: {"query": "impact of AI on software engineering 2025"}
         if (!html) return { title: r.title, url: r.url, content: '', error: 'Empty response' };
         const text = htmlToText(html);
         const trimmed = text.slice(0, 15_000);
+        if (shouldSummarize) {
+          const summary = await this._summarize(trimmed, r.title, r.url);
+          return { title: r.title, url: r.url, content: summary, error: summary !== trimmed ? '(summarized)' : undefined };
+        }
         return { title: r.title, url: r.url, content: trimmed, error: trimmed.length >= 15000 ? '(truncated)' : undefined };
       } catch (e: unknown) {
         return { title: r.title, url: r.url, content: 'Fetch error', error: e instanceof Error ? e.message : String(e) };
@@ -767,7 +818,8 @@ Usage: {"query": "impact of AI on software engineering 2025"}
         const clean = s.content.slice(0, 15_000).trim();
         output.push('');
         output.push(clean);
-        if (s.content.length > 15000) output.push('   ... (truncated)');
+        if (s.error === '(summarized)') output.push('   (summarized via ' + UserConfig.instance().settings.web.summarizationModel + ')');
+        else if (s.content.length > 15000) output.push('   ... (truncated)');
       }
       output.push('');
       output.push('---');

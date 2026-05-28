@@ -24,6 +24,8 @@ export interface SessionSettings {
   conversationTimeout: number;
   budgetEnabled: boolean;
   budgetAmount: number;
+  idleCleanupEnabled: boolean;
+  idleCleanupTimeout: number;
 }
 
 /** Context window settings. */
@@ -70,6 +72,7 @@ export interface WebSettings {
   cacheEnabled: boolean;
   cacheTTL: number;
   braveApiKey: string;
+  summarizationModel: string;
 }
 
 /** Persisted user settings. */
@@ -110,6 +113,8 @@ const DEFAULT_SETTINGS: UserSettings = {
     conversationTimeout: 60,
     budgetEnabled: true,
     budgetAmount: 10.0,
+    idleCleanupEnabled: false,
+    idleCleanupTimeout: 15,
   },
   context: {
     maxTokens: 200000,
@@ -148,6 +153,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     cacheEnabled: true,
     cacheTTL: 15,
     braveApiKey: '',
+    summarizationModel: '',
   },
 };
 

@@ -6,7 +6,26 @@ import type { NudgeStore } from '../providers/index.js';
 import type { IChannelAgent } from '../core/index.js';
 import { createA2ATools } from '../a2a/index.js';
 import { logInfo, logError } from '../core/index.js';
+import { getArmaPath, getChannelRoot } from './ChannelPaths.js';
+import { getPermissionStore } from './PermissionStore.js';
+import { join } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
 import type { ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
+
+/** Persist worker session state to its sandbox dir before cleanup. */
+function persistWorkerState(workerId: string, chName: string, agents: Map<string, IChannelAgent>): void {
+  try {
+    const workerAgent = agents.get(workerId);
+    if (workerAgent) {
+      const state = workerAgent.exportSession();
+      const armaPath = getArmaPath(chName);
+      const statePath = join(armaPath, 'workers', workerId, 'state.json');
+      writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf-8');
+    }
+  } catch (e) {
+    logError('a2a', `Failed to persist worker state for ${workerId}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
 
 /**
  * Context passed to createChannelAgent for tool wiring.
@@ -85,6 +104,19 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     onWorkerSpawned: (worker) => {
       logInfo('a2a', `Worker spawned: ${worker.name} model=${worker.model}`);
       channelAgents.set(worker.name, worker as ChannelAgent);
+
+      // Auto-setup sandbox workspace + parent permissions for every worker
+      try {
+        const armaPath = getArmaPath(chName);
+        const parentRoot = getChannelRoot(chName);
+        const workerSandbox = join(armaPath, 'workers', worker.name);
+        mkdirSync(workerSandbox, { recursive: true });
+        worker.setWorkspace(`${workerSandbox}:${parentRoot}:/tmp:/dev`);
+        getPermissionStore().rememberPath(worker.name, parentRoot);
+      } catch (e) {
+        logError('a2a', `Worker sandbox setup failed for ${worker.name}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
       const workerLabel = worker.name.replace(/^worker-/, '').replace(/-\d+$/, '').slice(0, 15);
       deps.callbacks.addChannelChild(chName, {
         id: worker.name,
@@ -118,6 +150,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       deps.callbacks.writeMessage('system', '*', `Worker cancelled: ${workerId}`, chName);
       const t = workerUiTimers.get(workerId);
       if (t) { clearInterval(t); workerUiTimers.delete(workerId); }
+      persistWorkerState(workerId, chName, channelAgents);
       channelAgents.delete(workerId);
       setTimeout(() => deps.callbacks.removeChannelChild(chName, workerId), 3000);
     },
@@ -168,6 +201,9 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
         }
       }
 
+      // Persist worker state to sandbox before cleanup
+      persistWorkerState(workerId, chName, channelAgents);
+
       channelAgents.delete(workerId);
       setTimeout(() => deps.callbacks.removeChannelChild(chName, workerId), 5000);
     },
@@ -196,6 +232,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
         }
       }
 
+      persistWorkerState(workerId, chName, channelAgents);
       channelAgents.delete(workerId);
       setTimeout(() => deps.callbacks.removeChannelChild(chName, workerId), 5000);
     },
@@ -241,6 +278,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
             await deps.driftManager.snapshot(chName, filePath, reason, toolName);
           } catch {}
         },
+        providerPool: deps.providerPool,
       }),
       askTool,
       todoTool,
@@ -253,6 +291,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       ...createCrossChannelTools(channelAgents, chName),
       ...deps.mcpManager.getConnectedMcpITools(),
       deps.catalogManager.createRequestTool((newTools) => {
+        if (newTools.length > 0) agent.registerTools(newTools);
         deps.setActiveToolNames(deps.catalogManager.activeToolNames);
         deps.callbacks.writeMessage('system', 'info',
           `Loaded ${newTools.length} tool(s) into context`, '#logs');

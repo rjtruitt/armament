@@ -8,7 +8,7 @@ import { NudgeManager } from './NudgeManager.js';
 import type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
 import { UserConfig } from '../config/index.js';
 import { stripAllAnsi } from '../core/stripAnsi.js';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, rmSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { getArmaPath, getNotesPath, getArchDir, armaDataDir, getChannelRoot } from './ChannelPaths.js';
 export type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps };
@@ -26,9 +26,79 @@ export class ChannelLifecycle {
   private _taskStore = new TaskStore();
   /** NudgeManager — reads core-nudges.md and creates per-channel scheduled prompts. */
   private _nudgeManager = new NudgeManager();
+  /** Last time each channel's agent went idle (used for idle-cleanup worker scheduling). */
+  private _lastIdleTime = new Map<string, number>();
+  /** Interval handle for periodic idle checks. */
+  private _idleCheckInterval: ReturnType<typeof setInterval> | null = null;
+  /** Get the idle-cleanup timeout in ms from config. */
+  private _idleCleanupDelay(): number {
+    return (UserConfig.instance().settings.session.idleCleanupTimeout || 15) * 60 * 1000;
+  }
 
   constructor(deps: ChannelLifecycleDeps) {
     this.deps = deps;
+    this._startIdleCheckInterval();
+  }
+
+  /** Start the periodic idle-check timer. */
+  private _startIdleCheckInterval(): void {
+    if (this._idleCheckInterval) return;
+    this._idleCheckInterval = setInterval(() => this._checkIdleChannels(), 30_000);
+  }
+
+  /** Stop the periodic idle-check timer. */
+  private _stopIdleCheckInterval(): void {
+    if (this._idleCheckInterval) {
+      clearInterval(this._idleCheckInterval);
+      this._idleCheckInterval = null;
+    }
+  }
+
+  /** Check all channels for idle-cleanup eligibility. */
+  private _checkIdleChannels(): void {
+    if (!UserConfig.instance().settings.session.idleCleanupEnabled) return;
+    const delay = this._idleCleanupDelay();
+    for (const [chName, agent] of this.channelAgents) {
+      if (!chName.startsWith('#') || chName.startsWith('worker-')) continue;
+      if (agent.status === 'idle') {
+        const lastIdle = this._lastIdleTime.get(chName);
+        if (!lastIdle) {
+          this._lastIdleTime.set(chName, Date.now());
+        } else if (Date.now() - lastIdle >= delay) {
+          this._lastIdleTime.delete(chName);
+          this._spawnIdleCleanupWorker(chName).catch(() => {});
+        }
+      } else {
+        // Agent is busy — clear idle tracking so timer restarts when it goes idle again
+        this._lastIdleTime.delete(chName);
+      }
+    }
+  }
+
+  /** Spawn a background cleanup worker for an idle channel. */
+  private async _spawnIdleCleanupWorker(chName: string): Promise<void> {
+    const runtime = this.channelRuntimes.get(chName);
+    if (!runtime) return;
+
+    const armaPath = getArmaPath(chName);
+    const cleanupPath = join(armaPath, 'idle-cleanup.md');
+    if (!existsSync(cleanupPath)) return;
+
+    // Don't spawn if user sent a message in the last minute
+    const lastIdle = this._lastIdleTime.get(chName);
+    if (lastIdle && Date.now() - lastIdle < 60_000) return;
+
+    const template = readFileSync(cleanupPath, 'utf-8');
+    const parentRoot = getChannelRoot(chName);
+    const workerId = `worker-${chName.slice(1)}-cleanup-${Date.now()}`;
+
+    // Fill in placeholders
+    const task = template
+      .replace(/\{parent-channel\}/g, chName)
+      .replace(/\{parent-workspace\}/g, parentRoot);
+
+    const result = await runtime.spawnWorker(workerId, task);
+    if (!result.success) return;
   }
 
   /** Public accessor for the NudgeManager (used by /nudge REPL command via CommandContext). */
@@ -385,26 +455,16 @@ export class ChannelLifecycle {
     const chatMessages = this.deps.callbacks.getChannelMessages(channelName) ?? [];
 
     const agentState = agent.exportSession();
+    let messages = agentState.messages || [];
 
     // Rolling dropoff: let it grow to 5500, then drop 1000 (keep 4500)
-    const MAX_SAVED_MESSAGES = 4500;
-    const DROPOFF_THRESHOLD = 5500;
-    let messages = agentState.messages;
-    if (!force && messages.length <= DROPOFF_THRESHOLD) {
-      return; // below threshold, skip write — next threshold hit or shutdown will persist
-    }
-    if (messages.length > DROPOFF_THRESHOLD) {
-      const dropped = messages.length - MAX_SAVED_MESSAGES;
-      messages = messages.slice(-MAX_SAVED_MESSAGES);
-      // Ensure the first message is a system note about the drop
-      messages[0] = {
+    if (messages.length > 5500) {
+      const drop = messages.length - 4500;
+      messages = messages.slice(drop);
+      messages.unshift({
         role: 'system',
-        content: `[Rolling dropoff — dropped ${dropped} oldest messages to stay under ${MAX_SAVED_MESSAGES}]`,
-      } as any;
-      // Trim any preceding system messages
-      while (messages.length > 1 && messages[1]?.role === 'system') {
-        messages.splice(1, 1);
-      }
+        content: `[Rolling dropoff — dropped ${drop} oldest messages to 4500]`,
+      } as any);
     }
 
     const bareName = channelName.startsWith('#') ? channelName.slice(1) : channelName;
