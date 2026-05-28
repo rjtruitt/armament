@@ -91,4 +91,10 @@ export class MockDriftManager implements IDriftManager {
     }
     return [...map.entries()].map(([path, stats]) => ({ path, ...stats }));
   }
+
+  async readSnapshotContent(id: string): Promise<{ content: string; filePath: string } | null> {
+    const entry = this._entries.find(e => e.id === id);
+    if (!entry) return null;
+    return { content: entry.content, filePath: entry.path };
+  }
 }

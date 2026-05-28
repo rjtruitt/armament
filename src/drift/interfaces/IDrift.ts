@@ -41,4 +41,5 @@ export interface IDriftManager {
   rollback(channelName: string, snapshotId: string): Promise<boolean>;
   getStats(channelName: string): Promise<IDriftStats>;
   getPerFileStats(): Promise<Array<{ path: string; count: number; totalSize: number; newest: number }>>;
+  readSnapshotContent(id: string): Promise<{ content: string; filePath: string } | null>;
 }

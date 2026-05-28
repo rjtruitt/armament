@@ -150,6 +150,7 @@ export function createDriftTools(manager: DriftManager, channel: string): ITool[
     new DriftRollbackTool(manager, channel),
     new DriftPruneTool(manager, channel),
     new DriftTreeTool(manager),
+    new DriftDiffTool(manager),
   ];
 }
 
@@ -163,6 +164,8 @@ export class DriftTreeTool implements ITool {
     depth: z.number().optional().describe('Max directory depth to recurse (default: 2, max: 5).'),
     du: z.boolean().optional().describe('Show human-readable sizes for each file/dir.'),
     flat: z.boolean().optional().describe('Show flat file list instead of tree (like find).'),
+    recent: z.string().optional().describe('Show only files with snapshots in last N (e.g. "1h", "30m", "7d").'),
+    stale: z.boolean().optional().describe('Show only files whose original path no longer exists on disk.'),
     channel: z.string().optional().describe('Filter snapshots by channel name (e.g. "#armament").'),
     sort: z.enum(['count', 'size', 'name', 'newest']).optional().describe('Sort by: count, size, name, or newest (default: count).'),
   });
@@ -170,19 +173,40 @@ export class DriftTreeTool implements ITool {
   constructor(private manager: DriftManager) {}
 
   async execute(args: unknown, _ctx: ToolContext): Promise<ToolResult> {
-    const { path, depth, du, flat, channel, sort } = args as {
+    const { path, depth, du, flat, channel, sort, recent, stale } = args as {
       path?: string; depth?: number; du?: boolean; flat?: boolean;
       channel?: string; sort?: 'count' | 'size' | 'name' | 'newest';
+      recent?: string; stale?: boolean;
     };
     try {
       const stats = await this.manager.getPerFileStats();
       const prefix = path ? (path.endsWith('/') ? path : path + '/') : '';
       const maxDepth = Math.min(depth ?? 2, 5);
+      const now = Date.now();
 
       // Filter by path prefix
       let filtered = prefix
         ? stats.filter(s => s.path.startsWith(prefix))
         : stats;
+
+      // Filter by recency
+      if (recent) {
+        const match = recent.match(/^(\d+)([smhd])$/);
+        if (!match) {
+          return { success: true, data: `Invalid --recent format "${recent}". Use e.g. "1h", "30m", "7d".` };
+        }
+        const num = parseInt(match[1], 10);
+        const unit = match[2];
+        const ms = unit === 's' ? num * 1000 : unit === 'm' ? num * 60 * 1000 : unit === 'h' ? num * 3600 * 1000 : num * 86400 * 1000;
+        const cutoff = now - ms;
+        filtered = filtered.filter(s => s.newest >= cutoff);
+      }
+
+      // Filter by stale (file path no longer exists on disk)
+      if (stale) {
+        const fs = await import('node:fs');
+        filtered = filtered.filter(s => !fs.existsSync(s.path));
+      }
 
       if (filtered.length === 0) {
         return { success: true, data: `No drift snapshots match path "${path ?? '(root)'}". Use drift_tree without --path to see all files.` };
@@ -329,5 +353,210 @@ export class DriftTreeTool implements ITool {
     } catch (e: unknown) {
       return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
     }
+  }
+}
+
+/** DriftDiffTool — show the diff between two snapshots of the same file. */
+export class DriftDiffTool implements ITool {
+  readonly name = 'drift_diff';
+  readonly description = `Show the diff between two snapshots of the same file. Takes two snapshot IDs (a and b) and shows line-by-line changes. Use --current to compare against the file's current state on disk instead of a second snapshot. Use drift_snapshots(path: "...") to find IDs.`;
+
+  readonly schema = z.object({
+    a: z.string().describe('First snapshot ID (e.g. "s_10").'),
+    b: z.string().optional().describe('Second snapshot ID. Omit and use --current to compare against current file.'),
+    current: z.boolean().optional().describe('Compare snapshot "a" against the current file on disk.'),
+    context: z.number().optional().describe('Lines of context around each change (default: 3).'),
+  });
+
+  constructor(private manager: DriftManager) {}
+
+  async execute(args: unknown, _ctx: ToolContext): Promise<ToolResult> {
+    const { a, b, current, context } = args as { a: string; b?: string; current?: boolean; context?: number };
+    try {
+      if (!a) {
+        return { success: false, error: { message: 'Missing required "a" (first snapshot ID).' } };
+      }
+      if (!b && !current) {
+        return { success: false, error: { message: 'Provide --current or a second snapshot ID "b".' } };
+      }
+
+      const ctx = context ?? 3;
+
+      // Read snapshot A
+      const snapA = await this.manager.readSnapshotContent(a);
+      if (!snapA) {
+        return { success: false, error: { message: `Snapshot "${a}" not found or content missing.` } };
+      }
+
+      // Read snapshot B or current file
+      let contentA = snapA.content;
+      let contentB: string;
+      let labelA = a;
+      let labelB: string;
+
+      if (current) {
+        const fs = await import('node:fs');
+        if (!fs.existsSync(snapA.filePath)) {
+          return { success: false, error: { message: `File "${snapA.filePath}" no longer exists on disk. Cannot compare with --current.` } };
+        }
+        contentB = fs.readFileSync(snapA.filePath, 'utf-8');
+        labelB = '(current)';
+      } else {
+        const snapB = await this.manager.readSnapshotContent(b!);
+        if (!snapB) {
+          return { success: false, error: { message: `Snapshot "${b}" not found or content missing.` } };
+        }
+        if (snapA.filePath !== snapB.filePath) {
+          return { success: false, error: { message: `Snapshots "${a}" and "${b}" are from different files: "${snapA.filePath}" vs "${snapB.filePath}". Use drift_snapshots(path: "...") to find snapshots for a specific file.` } };
+        }
+        contentB = snapB.content;
+        labelB = b!;
+      }
+
+      // Line diff
+      const linesA = contentA.split('\n');
+      const linesB = contentB.split('\n');
+
+      // Simple LCS-based diff
+      const result = this.diff(linesA, linesB);
+
+      // Format as unified diff
+      const output: string[] = [];
+      const filePath = snapA.filePath;
+      output.push(`--- ${filePath}  (${labelA})`);
+      output.push(`+++ ${filePath}  (${labelB})`);
+
+      // Group changes into hunks with context
+      const hunks = this.buildHunks(result, ctx);
+      for (const hunk of hunks) {
+        output.push(`@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@`);
+        for (const line of hunk.lines) {
+          output.push(line);
+        }
+      }
+
+      if (output.length <= 2) {
+        return { success: true, data: `No differences between ${a} and ${b ?? 'current'} for ${filePath} — snapshots are identical.` };
+      }
+
+      return { success: true, data: output.join('\n') };
+    } catch (e: unknown) {
+      return { success: false, error: { message: e instanceof Error ? e.message : String(e) } };
+    }
+  }
+
+  /** Simple Myers-like diff: returns array of {type: 'same'|'add'|'del', line: string} */
+  private diff(a: string[], b: string[]): Array<{ type: 'same' | 'add' | 'del'; line: string }> {
+    const result: Array<{ type: 'same' | 'add' | 'del'; line: string }> = [];
+    // Use a simple longest-common-subsequence approach
+    const m = a.length;
+    const bLines = b;
+    const n = bLines.length;
+
+    // Build LCS table
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (a[i - 1] === bLines[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+    }
+
+    // Backtrack to build diff
+    let i = m, j = n;
+    const stack: Array<{ type: 'same' | 'add' | 'del'; line: string }> = [];
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && a[i - 1] === bLines[j - 1]) {
+        stack.push({ type: 'same', line: a[i - 1] });
+        i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        stack.push({ type: 'add', line: bLines[j - 1] });
+        j--;
+      } else {
+        stack.push({ type: 'del', line: a[i - 1] });
+        i--;
+      }
+    }
+
+    // Reverse to get chronological order
+    for (let k = stack.length - 1; k >= 0; k--) {
+      result.push(stack[k]);
+    }
+    return result;
+  }
+
+  /** Group diff results into hunks with surrounding context. */
+  private buildHunks(diff: Array<{ type: 'same' | 'add' | 'del'; line: string }>, context: number):
+    Array<{ oldStart: number; oldCount: number; newStart: number; newCount: number; lines: string[] }> {
+    const hunks: Array<{ oldStart: number; oldCount: number; newStart: number; newCount: number; lines: string[] }> = [];
+    let i = 0;
+    while (i < diff.length) {
+      // Find the next change
+      let start = -1;
+      for (let j = i; j < diff.length; j++) {
+        if (diff[j].type !== 'same') { start = j; break; }
+      }
+      if (start === -1) break;
+
+      // Include leading context
+      const leadStart = Math.max(i, start - context);
+      const leadLines: Array<{ type: 'same' | 'add' | 'del'; line: string }> = [];
+      let oldLine = 1, newLine = 1;
+      // Count lines before start
+      for (let k = 0; k < start; k++) {
+        if (diff[k].type === 'same') { oldLine++; newLine++; }
+        else if (diff[k].type === 'del') oldLine++;
+        else newLine++;
+      }
+
+      // Collect the changed region and trailing context
+      const hunkLines: string[] = [];
+      let end = start;
+      let changedCount = 0;
+      for (let j = start; j < diff.length && (diff[j].type !== 'same' || changedCount < context); j++) {
+        end = j;
+        const d = diff[j];
+        if (d.type === 'same') {
+          hunkLines.push(' ' + d.line);
+          oldLine++; newLine++;
+          changedCount++;
+        } else if (d.type === 'del') {
+          hunkLines.push('-' + d.line);
+          oldLine++;
+          changedCount = 0;
+        } else {
+          hunkLines.push('+' + d.line);
+          newLine++;
+          changedCount = 0;
+        }
+      }
+
+      // Count old/new lines in this hunk
+      let oldCount = 0, newCount = 0;
+      for (const l of hunkLines) {
+        if (l.startsWith('-')) oldCount++;
+        else if (l.startsWith('+')) newCount++;
+        else { oldCount++; newCount++; }
+      }
+
+      // Actually compute oldStart/newStart properly
+      let oldStart = 1, newStart = 1;
+      for (let k = 0; k < start; k++) {
+        if (diff[k].type === 'same' || diff[k].type === 'del') oldStart++;
+        if (diff[k].type === 'same' || diff[k].type === 'add') newStart++;
+      }
+      // Adjust for leading context
+      oldStart -= Math.min(context, start - i);
+      newStart -= Math.min(context, start - i);
+      if (oldStart < 1) oldStart = 1;
+      if (newStart < 1) newStart = 1;
+
+      hunks.push({ oldStart, oldCount, newStart, newCount, lines: hunkLines });
+      i = end + 1;
+    }
+    return hunks;
   }
 }

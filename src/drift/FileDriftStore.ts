@@ -167,6 +167,17 @@ export class FileDriftStore {
     return results;
   }
 
+  /** Read a snapshot's stored content by snapshot ID. Returns null if not found or content missing. */
+  async readSnapshotContent(id: string): Promise<{ content: string; filePath: string; entry: DriftEntry } | null> {
+    const found = await this.getSnapshot(id);
+    if (!found) return null;
+    const { entry, filePath } = found;
+    const contentPath = join(this._contentDir, entry.hash);
+    if (!existsSync(contentPath)) return null;
+    const content = readFileSync(contentPath, 'utf-8');
+    return { content, filePath, entry };
+  }
+
   /**
    * Find a single snapshot by id.
    */

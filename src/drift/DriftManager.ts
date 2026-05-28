@@ -79,4 +79,9 @@ export class DriftManager implements IDriftManager {
   async getPerFileStats(): Promise<Array<{ path: string; count: number; totalSize: number; newest: number }>> {
     return this._store.getPerFileStats();
   }
+
+  /** Read snapshot content by ID. */
+  async readSnapshotContent(id: string): Promise<{ content: string; filePath: string; entry: DriftEntry } | null> {
+    return this._store.readSnapshotContent(id);
+  }
 }
