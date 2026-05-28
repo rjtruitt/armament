@@ -30,7 +30,7 @@ import { McpIntegration } from './McpIntegration.js';
 import { PluginIntegration } from './PluginIntegration.js';
 import { BackgroundTasks } from './BackgroundTasks.js';
 import { ContextManager } from './ContextManager.js';
-import { getSessionCommands, getIrcCommands, getConfigCommands, getContextCommands, getFlowCommands, getSetrootCommand, getNudgeCommands, getGodModeCommand } from './commands/index.js';
+import { getSessionCommands, getIrcCommands, getConfigCommands, getContextCommands, getFlowCommands, getSetrootCommand, getNudgeCommands, getGodModeCommand, getWorkerCommands } from './commands/index.js';
 import { buildThreadCallbacks } from './ThreadCallbackBuilder.js';
 
 import type { TuiRenderer } from './TuiRenderer.js';
@@ -322,6 +322,7 @@ export function createAppServices(
   commandDispatch.registerAll(getFlowCommands(flowRuntime));
   commandDispatch.registerAll(getSetrootCommand(driftManager));
   commandDispatch.registerAll(getNudgeCommands());
+  commandDispatch.registerAll(getWorkerCommands());
   commandDispatch.registerAll(getGodModeCommand());
 
   return {

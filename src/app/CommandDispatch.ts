@@ -79,6 +79,8 @@ export interface CommandRegistration {
   category?: 'irc' | 'standard' | 'config';
   handler: CommandHandler;
   picker?: PickerDef;
+  /** Optional: provide argument suggestions for autocomplete. Gets partial input after command name. */
+  getArgCompletions?: (partial: string, ctx: CommandContext) => string[];
 }
 /** Class representing CommandDispatch. */
 export class CommandDispatch {
@@ -130,6 +132,21 @@ export class CommandDispatch {
    */
   getCompletions(partial: string): string[] {
     const lower = partial.toLowerCase().replace(/^\//, '');
+
+    // Check if there's already a command name followed by args (e.g. "worker pro")
+    const spaceIdx = lower.indexOf(' ');
+    if (spaceIdx > 0) {
+      const cmdName = lower.slice(0, spaceIdx);
+      const argPartial = lower.slice(spaceIdx + 1);
+      const reg = this.registrations.find(r => r.name === cmdName);
+      if (reg?.getArgCompletions) {
+        // Need a CommandContext to pass — return empty, caller handles it
+        return [];
+      }
+      return [];
+    }
+
+    // Command name completion
     const matches: string[] = [];
     for (const reg of this.registrations) {
       if (reg.name.startsWith(lower)) {
@@ -137,6 +154,14 @@ export class CommandDispatch {
       }
     }
     return matches;
+  }
+
+  /**
+   * Get argument completions for a command.
+   */
+  getArgCompletions(cmdName: string, partial: string, ctx: CommandContext): string[] {
+    const reg = this.registrations.find(r => r.name === cmdName);
+    return reg?.getArgCompletions?.(partial, ctx) ?? [];
   }
   /**
    * Gets the registrations.

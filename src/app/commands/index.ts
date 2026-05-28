@@ -7,3 +7,4 @@ export { getFlowCommands } from './flow.js';
 export { getSetrootCommand } from './setroot.js';
 export { getNudgeCommands } from './nudge.js';
 export { getGodModeCommand } from './godmode.js';
+export { getWorkerCommands } from './worker.js';
