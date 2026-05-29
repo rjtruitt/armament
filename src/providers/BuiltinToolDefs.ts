@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { getPermissionStore, isRemembered } from '../app/PermissionStore.js';
 
 const DEFAULT_BASH_TIMEOUT_MS = 120_000;
+/** Track active bash child processes per channel, so interrupt can kill them. */
+const activeBashProcesses = new Map<string, import('node:child_process').ChildProcess>();
 const MAX_OUTPUT_BYTES = 100_000;
 
 function expandTilde(p: string): string {
@@ -194,13 +196,15 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
 
     try {
       const output = await new Promise<string>((resolve, reject) => {
-        exec(command, {
+        const child = exec(command, {
           encoding: 'utf-8',
           timeout: timeoutMs,
           maxBuffer: MAX_OUTPUT_BYTES,
           cwd: primaryWorkspace(this.workspace) ?? process.cwd(),
           env: { ...process.env, TERM: 'dumb' },
         }, (err, stdout, stderr) => {
+          // Clean up process tracking
+          if (this.channel) activeBashProcesses.delete(this.channel);
           if (err) {
             if (err.killed) {
               bashCircuitBreaker.recordFailure('TIMEOUT');
@@ -215,9 +219,11 @@ Avoid using bash for reading/writing files — use read_file, write_file, or edi
           bashCircuitBreaker.recordSuccess();
           resolve(((stdout || '') + (stderr || '')).trim());
         });
+        if (this.channel && child) activeBashProcesses.set(this.channel, child);
       });
       return { success: true, data: output || '(no output)' };
     } catch (err: unknown) {
+      if (this.channel) activeBashProcesses.delete(this.channel);
       const msg = err instanceof Error ? err.message : String(err);
       const code = err instanceof Error && 'code' in err ? (err as any).code : 'EXECUTION_ERROR';
       bashCircuitBreaker.recordFailure(code);
@@ -619,5 +625,14 @@ Use this instead of bash grep when you want structured output you can act on (e.
       return { success: true, data: lines.slice(0, 200).join('\n') + `\n\n... (${lines.length} total matches, showing first 200. Narrow your search with "include" or a more specific path.)` };
     }
     return { success: true, data: `${lines.length} match${lines.length > 1 ? 'es' : ''}:\n${output}` };
+  }
+}
+
+/** Kill the active bash process for a channel. Called on interrupt. */
+export function abortBashProcess(channel: string): void {
+  const child = activeBashProcesses.get(channel);
+  if (child) {
+    try { child.kill('SIGTERM'); } catch { /* process already dead */ }
+    activeBashProcesses.delete(channel);
   }
 }

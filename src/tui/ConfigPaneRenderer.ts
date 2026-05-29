@@ -190,6 +190,7 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
       if (item.type === 'toggle') {
         const f = item as DetailField;
         f.value = !f.value;
+        if (activeRow && f.key) activeRow.cells[f.key] = f.value ? 'on' : 'off';
         ctx.markDirty();
         emitChange(ctx, f.key, f.value, activeRow);
         return true;
@@ -201,6 +202,7 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
           const delta = key === 'arrowright' ? 1 : -1;
           const next = (idx + delta + f.choices.length) % f.choices.length;
           f.value = f.choices[next].id;
+          if (activeRow && f.key) activeRow.cells[f.key] = f.value;
           ctx.markDirty();
           emitChange(ctx, f.key, f.value, activeRow);
         }
@@ -215,6 +217,7 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
       if (item.type === 'toggle') {
         const f = item as DetailField;
         f.value = !f.value;
+        if (activeRow && f.key) activeRow.cells[f.key] = f.value ? 'on' : 'off';
         ctx.markDirty();
         emitChange(ctx, f.key, f.value, activeRow);
         return true;
@@ -224,6 +227,7 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
         if (f.choices && f.choices.length > 0) {
           const idx = f.choices.findIndex(c => c.id === f.value);
           f.value = f.choices[(idx + 1) % f.choices.length].id;
+          if (activeRow && f.key) activeRow.cells[f.key] = f.value;
           ctx.markDirty();
           emitChange(ctx, f.key, f.value, activeRow);
         }

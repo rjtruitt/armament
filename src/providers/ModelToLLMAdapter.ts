@@ -325,6 +325,18 @@ export class ModelToLLMAdapter implements ILLMProvider {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (/Streaming is not implemented/i.test(msg)) {
+        // Fall back to non-streaming for providers that don't support streaming (e.g. Gemini)
+        const result = await this.invoke(messages, options);
+        yield { type: 'text', text: result.content };
+        if (result.tool_calls) {
+          for (const tc of result.tool_calls) {
+            yield { type: 'tool_call', toolCall: tc };
+          }
+        }
+        yield { type: 'done' };
+        return;
+      }
       const isRateLimit = /throttl|rate.limit|too.many|TPM|RPM|429/i.test(msg);
       if (isRateLimit) {
         logWarn('adapter', `Rate limit hit: ${msg}`);

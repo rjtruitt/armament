@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { homedir } from 'node:os';
+import { getPermissionStore } from "./PermissionStore.js";
 import { UserConfig } from '../config/index.js';
 import { logInfo, type IReplConfig } from '../core/index.js';
 import { TuiRenderer as TuiMode } from './TuiRenderer.js';
@@ -211,6 +212,7 @@ export function configureTuiPostCreate(tui: TuiMode, deps: TuiWiringDeps): void 
     }
   }
   tui.updateStatus({ provider: defaultProviderName as string, model: defaultModel || 'none', effort: defaultEffort });
+  tui.setGodMode(getPermissionStore().isGodMode(tui.getActiveChannel()));
 
   if (defaultProvider && defaultModel) {
     deps.providerPool.getOrCreate(

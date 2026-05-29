@@ -17,6 +17,7 @@ export function getGodModeCommand(): CommandRegistration[] {
         }
         const store = getPermissionStore();
         const nowOn = store.toggleGodMode(channel);
+        ctx.tui?.setGodMode(nowOn);
         return {
           handled: true,
           output: nowOn

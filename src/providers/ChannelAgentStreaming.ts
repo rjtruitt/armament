@@ -123,6 +123,8 @@ export interface StreamingConfig {
   thinking?: { enabled: boolean; budgetTokens: number };
   /** Provider-specific options passed verbatim (effort, reasoning_effort, top_p, etc.). */
   modelOptions?: Record<string, unknown>;
+  /** If true, the streaming loop should abort ASAP — used for interrupt. */
+  isInterrupted?: () => boolean;
   onTurnStart?: (turnNumber: number) => void;
   onTurnComplete?: (turnNumber: number, response: string) => void;
   onToolCall?: (toolName: string, args: unknown) => void;
@@ -183,10 +185,16 @@ export async function* runStreamingLoop(
     mm.addMessage({ role: 'user', content: augmentedInput });
 
     const maxIterations = config.maxTurns ?? 200;
+    const MAX_SILENT_RETRIES = 3;
+    let silentRetries = 0;
     let iteration = 0;
 
     while (iteration < maxIterations) {
       iteration++;
+      if (config.isInterrupted?.()) {
+        state.status = 'idle';
+        break;
+      }
       sanitizeOrphanedToolCalls(mm); // sanitize before every API call, not just at start
       const messages = mm.getMessages();
       const toolDefs = loop.getToolDefinitions();
@@ -239,6 +247,20 @@ export async function* runStreamingLoop(
             total_tokens: totalTok,
           });
         }
+      }
+
+      // ---------- Silent response retry ----------
+      if (!fullText && !hasToolCalls) {
+        silentRetries++;
+        if (silentRetries < MAX_SILENT_RETRIES) {
+          // LLM returned nothing — retry without adding the empty assistant message
+          state.status = 'thinking';
+          continue;
+        }
+        // Give up after max retries — yield error so user sees something
+        yield { type: 'text', text: `[LLM returned no response after ${MAX_SILENT_RETRIES} retries. The API may be degraded. Try again.]` };
+        mm.addMessage({ role: 'assistant', content: `[No response — retries exhausted]` });
+        break;
       }
 
       const assistantContent = fullText + (toolCalls.length > 0 ? '' : '');
@@ -318,9 +340,14 @@ export async function* runStreamingLoop(
         toolResults.push({ tc, result });
       }
       for (const { tc, result } of toolResults) {
+        const rawContent = result.success ? result.data : result.error;
+        // Sanitize tool output: strip ANSI control chars so JSON transmission is safe
+        const safeContent = typeof rawContent === 'string'
+          ? rawContent.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
+          : rawContent;
         mm.addMessage({
           role: 'tool',
-          content: JSON.stringify(result.success ? result.data : result.error),
+          content: JSON.stringify(safeContent),
           tool_call_id: tc.id,
         });
       }

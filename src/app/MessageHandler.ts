@@ -123,6 +123,7 @@ export async function handleUserMessage(
       }
       const errMsg = err instanceof Error ? err.message : String(err);
       tui?.writeMessage('system', 'err', `${activeChannel} error: ${errMsg}`, '#logs');
+      tui?.writeMessage('system', 'err', `${activeChannel} error: ${errMsg}`, '#errors');
       return `Error: ${errMsg}`;
     }
   }

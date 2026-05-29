@@ -32,4 +32,5 @@ coverage/
 !CHANGELOG.md
 !LICENSE
 !docs/*.md
+godev/
 .armaws/

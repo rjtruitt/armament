@@ -175,21 +175,7 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
 
         const dimColor = noColor ? '' : fgRgb(...interpolate(theme.barStops, 0.3));
         const label = noColor ? ` ${time} <${msg.sender}> ` : ` ${timeStr} ${sender} `;
-        let tail: string;
-        if (themeName === 'pro') {
-          tail = '';
-        } else if (noColor) {
-          tail = ' ━═─╶·';
-        } else {
-          const tailChars = ['━', '═', '─', '╶', '·'];
-          const stops = theme.barStops;
-          tail = ' ' + tailChars.map((ch, i) => {
-            const t = 1 - (i / (tailChars.length - 1));
-            const [r, g, b] = interpolate(stops, t);
-            return `${fgRgb(r, g, b)}${ch}`;
-          }).join('') + rst;
-        }
-        output.push(`${indentStr}${dimColor}-${rst}${label}${tail}`);
+        output.push(`${indentStr}${dimColor}-${rst}${label}`);
 
         for (const line of contentLines) {
           output.push(`${indentStr}    ${line}${rst}`);
@@ -198,22 +184,8 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
       }
 
       if (msg.type === 'user') {
-        if (!showAgentHeader) {
-          // Minimal: dimmed thin bar prefix, no timestamp/sender
-          const textFg = noColor ? '' : fgRgb(220, 220, 220);
-          const dimColor = noColor ? '' : fgRgb(160, 160, 160);
-          const contentCols = Math.max(20, width - 2 - indent);
-          const contentLines = engineWrap(msg.content, contentCols);
-          const output: string[] = [];
-          output.push('');
-          output.push(`${indentStr}${dimColor}╷${rst}`);
-          for (const line of contentLines) {
-            output.push(`${indentStr}  ${textFg}${line}${rst}`);
-          }
-          return output;
-        }
-
-        // Original format: gradient header ─ time sender ━═─╶·
+        // Always show user headers — the toggle is for agent headers only.
+        // Format: gradient header ─ time sender ━═─╶·
         const textFg = noColor ? '' : fgRgb(220, 220, 220);
         const headerText = `─ ${time} ${msg.sender} `;
         let headerLine: string;
@@ -229,18 +201,8 @@ export function createIrcChatRenderer(config: ChatRendererConfig) {
               return `${fgRgb(brightness, brightness, brightness)}${ch}`;
             }).join('') + rst;
           }
-        } else if (noColor) {
-          const tailChars = ['━', '═', '─', '╶', '·'];
-          headerLine = headerText + tailChars.join('');
         } else {
-          const tailChars = ['━', '═', '─', '╶', '·'];
-          const fullChars = [...headerText, ...tailChars];
-          const totalLen = fullChars.length;
-          headerLine = fullChars.map((ch, i) => {
-            const t = i / (totalLen - 1);
-            const brightness = Math.round(70 + t * 90);
-            return `${fgRgb(brightness, brightness, brightness)}${ch}`;
-          }).join('') + rst;
+          headerLine = headerText + rst;
         }
 
         const contentCols = Math.max(20, width - 2 - indent);

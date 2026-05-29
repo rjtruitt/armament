@@ -167,9 +167,13 @@ export function handlePaletteKey(deps: ActionDeps, seq: string): void {
     const selected = deps.commandPalette.select();
     if (selected && deps.delegate.handlePaletteCommand?.(selected)) {
       deps.inputBar.handleKey('ctrl+u');
-      deps.commandPalette.hide();
-      deps.focusManager.setRegionVisible('palette', false);
-      deps.focusManager.unlockFocus();
+      // Only hide palette if the command handler didn't set up a custom picker
+      // (e.g. /model shows a picker, handleSubmit commands don't)
+      if (!deps.commandPalette.isCustomPicker()) {
+        deps.commandPalette.hide();
+        deps.focusManager.setRegionVisible('palette', false);
+        deps.focusManager.unlockFocus();
+      }
       deps.delegate.render();
       return;
     }
@@ -236,12 +240,21 @@ export function handleFKeyBarClick(deps: ActionDeps, col: number): void {
 export function checkPaletteState(deps: ActionDeps): void {
   const text = deps.inputBar.getText();
   if (text.startsWith('/') && text.length >= 1) {
-    if (!deps.commandPalette.isVisible()) {
-      deps.commandPalette.show();
-      deps.focusManager.setRegionVisible('palette', true);
-      deps.focusManager.lockFocus('input');
+    // Space in text means user is done typing the command name — hide palette
+    if (text.includes(' ')) {
+      if (deps.commandPalette.isVisible() && !deps.commandPalette.isCustomPicker()) {
+        deps.commandPalette.hide();
+        deps.focusManager.setRegionVisible('palette', false);
+        deps.focusManager.unlockFocus();
+      }
+    } else {
+      if (!deps.commandPalette.isVisible()) {
+        deps.commandPalette.show();
+        deps.focusManager.setRegionVisible('palette', true);
+        deps.focusManager.lockFocus('input');
+      }
+      updatePaletteFilter(deps);
     }
-    updatePaletteFilter(deps);
   } else {
     if (deps.commandPalette.isVisible() && !deps.commandPalette.isCustomPicker()) {
       deps.commandPalette.hide();

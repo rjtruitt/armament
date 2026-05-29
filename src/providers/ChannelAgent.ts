@@ -32,6 +32,7 @@ export class ChannelAgent implements IChannelAgent {
   private _stickyNotes: StickyNote[] = [];
   private _injectedMessages: string[] = [];
   private _toolFailCounts: Map<string, { count: number; lastFailure: number }> = new Map();
+  private _interrupted = false;
   private static readonly MAX_RECENT_FILES = 10;
 
   constructor(config: ChannelAgentConfig) {
@@ -158,6 +159,11 @@ export class ChannelAgent implements IChannelAgent {
   /** Queue a user message to inject into the conversation at the next tool-loop boundary. */
   injectMessage(content: string): void {
     this._injectedMessages.push(content);
+  }
+
+  /** Abort the current streaming session. Called on user interrupt. */
+  interrupt(): void {
+    this._interrupted = true;
   }
 
   /** Returns true if the given content string is already queued for injection. */
@@ -360,6 +366,7 @@ export class ChannelAgent implements IChannelAgent {
   /** Streaming variant of sendMessage; yields incremental text, tool events, and a final 'done'. */
   async *sendMessageStreaming(input: string, onToolCall?: (name: string, args: unknown) => void): AsyncGenerator<StreamEvent> {
     this._turnCount++;
+    this._interrupted = false;
     this._status = 'thinking';
     this._config.onTurnStart?.(this._turnCount);
 
@@ -377,7 +384,7 @@ export class ChannelAgent implements IChannelAgent {
 
     const gen = runStreamingLoop(
       this._loop,
-      this._config,
+      { ...this._config, isInterrupted: () => this._interrupted },
       state,
       augmented,
       onToolCall,

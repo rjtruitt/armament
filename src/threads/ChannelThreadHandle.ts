@@ -148,6 +148,11 @@ export class ChannelThreadHandle {
     return this.sendMessage(trigger ?? `Scheduled: ${content.slice(0, 80)}`);
   }
 
+  /** Abort the current streaming session. Called on user interrupt. */
+  interrupt(): void {
+    this.coordinator.interrupt(this.channelName);
+  }
+
   /**
    * Send message streaming.
    */

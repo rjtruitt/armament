@@ -76,8 +76,6 @@ export interface TuiRendererOptions {
   onModelSelect?: (provider: string, model: string) => void;
   onNewChannel?: (channel: string) => void;
   getCommandDispatch?: () => import('./CommandDispatch.js').CommandDispatch | null;
-  /** Build a CommandContext for argument autocomplete. */
-  buildCommandContext?: () => import('./CommandDispatch.js').CommandContext;
 }
 
 /** Backward-compat alias. */

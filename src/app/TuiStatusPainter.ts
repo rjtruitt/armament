@@ -171,12 +171,19 @@ export class TuiStatusPainter {
    */
   getContextualStatusParts(
     channel: string,
-    values: { provider: string; model: string; agents: number; cost: { current: number; budget: number } },
+    values: { provider: string; model: string; agents: number; cost: { current: number; budget: number }; metrics?: Record<string, string> },
     approvalPending: number,
     getChannelStatus?: (channel: string) => { tokens: number; cacheRead?: number; cacheWrite?: number; model: string; provider: string; status: string; contextPercent?: number; contextTokens?: number } | null,
   ): StatusPart[] {
     const parts: StatusPart[] = [];
     const chStatus = getChannelStatus?.(channel);
+
+    // Include metrics (e.g. god:! for godmode indicator)
+    if (values.metrics) {
+      for (const [key, value] of Object.entries(values.metrics)) {
+        parts.push({ label: key, value });
+      }
+    }
 
     switch (channel) {
       case '#control':

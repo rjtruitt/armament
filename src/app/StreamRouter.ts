@@ -83,7 +83,9 @@ export class StreamRouter {
   routeAsync(agent: ChannelAgent, input: string, target: OutputTarget): void {
     this.route(agent, input, target).catch((err: unknown) => {
       const tui = this.deps.getTui();
-      tui?.writeMessage('system', 'err', `Agent error: ${err instanceof Error ? err.message : String(err)}`, target.channel);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      tui?.writeMessage('system', 'err', `Agent error: ${errMsg}`, target.channel);
+      tui?.writeMessage('system', 'err', `Agent error: ${errMsg}`, '#errors');
     });
   }
 

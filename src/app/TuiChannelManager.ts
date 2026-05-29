@@ -17,7 +17,7 @@ import {
 /**
  * Strip terminal-hostile characters from text before it enters the TUI display buffer.
  * Catches what stripAllAnsi misses:
- *   - 8-bit C1 control codes (\€-\Ÿ) â€” interpreted as escape sequences
+ *   - 8-bit C1 control codes (\ï¿½-\ï¿½) â€” interpreted as escape sequences
  *   - Unicode formatting/control chars â€” zero-width spaces, bidirectional overrides
  *   - ASCII control chars except \	, \
 , \
@@ -345,7 +345,7 @@ export class TuiChannelManager {
   }
 
   /** Re-render all channels after a layout resize. */
-  reRenderAllChannels(activeChannel: string): void {
+  reRenderAllChannels(activeChannel?: string): void {
     reRenderAllChannelsHelper(
       this._channelMessages,
       this._channelLines,

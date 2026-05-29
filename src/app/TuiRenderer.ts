@@ -2,6 +2,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { cwd } from 'node:process';
+/** @fileoverview Terminal UI entry point — renders all channels, config panes, sidebar, status bar. */
 import { ScreenBuffer, LayoutManager, Sidebar, InputBar, StatusBar, CommandPalette, type CommandDef, FocusManager, MouseHandler, ApprovalWidget, type ApprovalRequest, type ChatMessage } from '../tui/index.js';
 import { getCommandsForPalette } from './CommandRegistry.js';
 import { getRedirectedRoot } from './ChannelPaths.js';
@@ -82,6 +83,7 @@ export class TuiRenderer {
     });
     this.configPanes = new TuiConfigPanes(this.opts, {
       render: () => this.render(), setActiveChannel: (ch) => this.setActiveChannel(ch), setRenderInterval: (ms) => this.setRenderInterval(ms),
+      reRenderAllChannels: () => this.channelManager.reRenderAllChannels(this.getActiveChannel()),
     });
 
     this.inputHandler = new TuiInputHandler({
@@ -137,23 +139,6 @@ export class TuiRenderer {
           const matching = dirs.filter((d: string) => d.startsWith(prefix)).map((d: string) => `/setroot ${join(dirPath, d)}`);
           this.inputBar.setCompletions(matching);
         } catch {
-          this.inputBar.setCompletions([]);
-        }
-      } else if (/^\/(prompt|spawn|help)\s/.test(text)) {
-        // Argument completion for known commands with getArgCompletions
-        const spaceIdx = text.indexOf(' ');
-        const cmdName = text.slice(1, spaceIdx).toLowerCase();
-        const partial = text.slice(spaceIdx + 1);
-        const dispatch = this.opts.getCommandDispatch?.();
-        const ctx = this.opts.buildCommandContext?.();
-        if (dispatch && ctx) {
-          const completions = dispatch.getArgCompletions(cmdName, partial, ctx);
-          if (completions.length > 0) {
-            this.inputBar.setCompletions(completions.map(c => `/${cmdName} ${c}`));
-          } else {
-            this.inputBar.setCompletions([]);
-          }
-        } else {
           this.inputBar.setCompletions([]);
         }
       } else {
@@ -460,6 +445,8 @@ export class TuiRenderer {
    */
   updateStatus(data: { provider?: string; model?: string; effort?: string; agents?: number; cost?: { current: number; budget: number } }): void { this.channelView.updateStatus(data); }
 
+  /** Set godmode indicator in the status bar. */
+  setGodMode(on: boolean): void { this.statusBar.setGodMode(on); }
   /**
    * Rebuild mcp menu.
    */

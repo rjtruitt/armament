@@ -118,6 +118,19 @@ export function getPromptCommand(): CommandRegistration[] {
             const name = args[0];
             if (!name) {
               const all = listAllPrompts(ctx.activeChannel ?? '');
+              if (ctx.tui && all.length > 0) {
+                const items = all.map((p: string) => ({ name: p, description: '', category: 'standard' as const }));
+                ctx.tui.showPicker('prompts', items, (selected) => {
+                  const channel = ctx.activeChannel;
+                  if (!channel) return;
+                  const found = getPrompt(channel, selected.name);
+                  if (!found) return;
+                  ctx.tui?.writeMessage('system', '*', `📋 Prompt "${selected.name}" injected inline`, channel);
+                  ctx.submitMessage(found.content, channel);
+                });
+                return;
+              }
+              // Fallback: no TUI available
               if (all.length === 0) {
                 ctx.tui?.writeMessage('system', '*',
                   'No prompts found. Create ~/.arma/prompts/<name>.md or .armaws/workers/prompts/<name>.md',
@@ -182,6 +195,18 @@ export function getSpawnCommand(): CommandRegistration[] {
             const name = args[0];
             if (!name) {
               const all = listAllPrompts(ctx.activeChannel ?? '');
+              if (ctx.tui && all.length > 0) {
+                const items = all.map((p: string) => ({ name: p, description: '', category: 'standard' as const }));
+                ctx.tui.showPicker('spawn', items, (selected) => {
+                  const channel = ctx.activeChannel;
+                  if (!channel) return;
+                  // Re-run the spawn logic with the selected prompt name
+                  const handler = getSpawnCommand()[0].handler;
+                  handler([selected.name], ctx);
+                });
+                return;
+              }
+              // Fallback: no TUI available
               if (all.length === 0) {
                 ctx.tui?.writeMessage('system', '*',
                   'No prompts found. Create ~/.arma/prompts/<name>.md or .armaws/workers/prompts/<name>.md',

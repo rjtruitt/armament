@@ -17,6 +17,7 @@ export interface StatusBarValues {
   effort?: string;
   agents: number;
   cost: { current: number; budget: number };
+  metrics?: Record<string, string>;
 }
 
 /** Partial data shape for bulk updates. */
@@ -28,6 +29,7 @@ export interface StatusBarData {
   budget?: number;
   mode?: string;
   latency?: number;
+  godmode?: boolean;
 }
 
 /**
@@ -99,7 +101,8 @@ export class StatusBar {
       provider: this._provider,
       model: this._model,
       agents: this._agents,
-      cost: { current: this._costCurrent, budget: this._costBudget }
+      cost: { current: this._costCurrent, budget: this._costBudget },
+      metrics: Object.fromEntries(this._metrics),
     };
   }
 
@@ -203,6 +206,16 @@ export class StatusBar {
    * Sets the metric.
    */
   setMetric(key: string, value: string): void { this._metrics.set(key, value); }
+  /** Set godmode indicator in the status bar — shows when on, hides when off. */
+  setGodMode(on: boolean): void {
+    if (on) {
+      this._metrics.set('god', '!');
+    } else {
+      this._metrics.delete('god');
+    }
+    this.scheduleRender();
+  }
+
   /**
    * Remove metric.
    */

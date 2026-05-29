@@ -28,6 +28,28 @@ export function getHelpCommand(dispatch: CommandDispatch): CommandRegistration[]
         if (_args.length === 0) {
           // List all commands
           const all = dispatch.getRegistrations();
+          if (ctx.tui && all.length > 0) {
+            const items = all.map(r => ({
+              name: `/${r.name}`,
+              description: r.description ?? '',
+              category: 'standard' as const,
+            }));
+            ctx.tui.showPicker('help', items, (selected) => {
+              const cmdName = selected.name.slice(1);
+              const reg = dispatch.getRegistrations().find(r => r.name === cmdName);
+              if (!reg) return;
+              const lines: string[] = [`/${reg.name}`];
+              if (reg.description) lines.push(reg.description);
+              lines.push('');
+              lines.push(`  Usage: ${reg.usage ?? '/' + reg.name + ' <args>'}`);
+              if (reg.aliases && reg.aliases.length > 0) {
+                lines.push(`  Aliases: ${reg.aliases.map(a => '/' + a).join(', ')}`);
+              }
+              ctx.tui?.writeMessage('system', 'help', lines.join('\n'), ctx.activeChannel);
+            });
+            return { handled: true, output: '' };
+          }
+          // Fallback: text list
           if (all.length === 0) {
             ctx.tui?.writeMessage('system', '*', 'No commands registered.', ctx.activeChannel);
             return { handled: true, output: '' };

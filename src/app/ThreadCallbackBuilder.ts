@@ -27,6 +27,7 @@ export function buildThreadCallbacks(deps: ThreadCallbackDeps): any {
     },
     onError: (channel: string, message: string) => {
       deps.getTui()?.writeMessage('system', 'err', `[${channel}] ${message}`, '#logs');
+      deps.getTui()?.writeMessage('system', 'err', `[${channel}] ${message}`, '#errors');
     },
     onStatusChange: (channel: string, status: any) => {
       deps.getTui()?.updateAgentStatus(channel, status);
@@ -79,6 +80,7 @@ export function buildThreadCallbacks(deps: ThreadCallbackDeps): any {
     onThreadDied: (channel: string) => {
       logError('repl', `Thread died: ${channel}`);
       deps.getTui()?.writeMessage('system', 'err', `Thread crashed: ${channel}`, '#logs');
+      deps.getTui()?.writeMessage('system', 'err', `Thread crashed: ${channel}`, '#errors');
     },
   };
 }

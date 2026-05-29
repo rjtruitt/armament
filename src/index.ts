@@ -5,6 +5,7 @@ import { ArmamentApp } from './app/ArmamentApp.js';
 import { renderBanner, renderLoadingScreen } from './rendering/ansi/banner.js';
 import { RESET } from './rendering/ansi/colors.js';
 import { DebugMode } from './debug/DebugMode.js';
+import { runDebugShell } from './debug/DebugShell.js';
 import { UserConfig } from './config/UserConfig.js';
 import { getGlobalEventBus } from './app/EventBus.js';
 import { getPermissionStore } from './app/PermissionStore.js';
@@ -13,7 +14,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } from 
 import { join as pathJoin, dirname as pathDirname } from 'path';
 import { fileURLToPath } from 'url';
 import { cwd } from 'process';
-import { armaDataDir } from './app/ChannelPaths.js';
+import { armaDataDir, getNotesPath } from './app/ChannelPaths.js';
 
 interface CliArgs {
   agent?: string;
@@ -41,12 +42,16 @@ interface CliArgs {
   theme?: string;
   clearSession?: boolean;
   godMode?: boolean;
+  debugArgs?: string[];
+  jsonFlag?: boolean;
+  shell?: boolean;
 }
 
 function parseArgs(): CliArgs {
   const program = new Command();
 
   program
+    .allowExcessArguments(true)
     .name('arma')
     .description('Enterprise AI terminal — ACiD/BBS-style interactive agent loop CLI')
     .configureHelp({ showGlobalOptions: false })
@@ -74,7 +79,9 @@ function parseArgs(): CliArgs {
     .option('--clear-session', 'Clear current session data')
     .option('--version', 'Show version')
     .option('-h, --help', 'Show this help')
-    .option('--debug', 'Enable debug mode')
+    .option('--debug', 'Enable debug mode (with optional command: arma --debug <subsystem> <command>)')
+    .option('--json', 'JSON output mode (default in debug mode)')
+    .option('--shell', 'Start interactive debug shell (armament subsystem CLI)')
     .option('--web', 'Start web UI server (armament-web-ui)')
     .option('--godmode', 'Enable god mode for all channels — bypasses all permission prompts (temporary, resets on restart)');
 
@@ -108,7 +115,11 @@ function parseArgs(): CliArgs {
   if (opts.version === true) args.version = true;
   if (opts.help === true) args.help = true;
   if (opts.debug === true) args.debug = true;
+  if (opts.json === true) args.jsonFlag = true;
   if (opts.web === true) args.web = true;
+  // Capture remaining args after flags (for --debug channel list etc.)
+  if (opts.shell === true) { args.shell = true; args.noTui = true; }
+  args.debugArgs = program.args;
   if (opts.web) args.noTui = true; // --web implies --no-tui
 
   return args;
@@ -406,15 +417,13 @@ async function main(): Promise<void> {
         }
       },
       getChannelNotes: (ch: string) => {
-        const bare = ch.startsWith('#') ? ch.slice(1) : ch;
-        try { return readFileSync(pathJoin(armaDataDir(), 'channels', bare, 'workspace', 'notes.md'), 'utf-8'); }
+        try { return readFileSync(getNotesPath(ch), 'utf-8'); }
         catch { return ''; }
       },
       saveChannelNotes: (ch: string, content: string) => {
-        const bare = ch.startsWith('#') ? ch.slice(1) : ch;
-        const dir = pathJoin(armaDataDir(), 'channels', bare, 'workspace');
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(pathJoin(dir, 'notes.md'), content, 'utf-8');
+        const notesPath = getNotesPath(ch);
+        mkdirSync(pathDirname(notesPath), { recursive: true });
+        writeFileSync(notesPath, content, 'utf-8');
       },
       getChannelTools: (ch: string) => {
         const name = ch.startsWith('#') ? ch : `#${ch}`;
@@ -660,6 +669,12 @@ async function main(): Promise<void> {
   }
 
   await repl.start();
+  // Run debug shell if there are remaining args (arma debug channel list)
+  if (args.shell || (args.debugArgs && args.debugArgs.length > 0)) {
+    await runDebugShell(repl, args.debugArgs ?? [], args.jsonFlag ?? false);
+    await repl.stop();
+    process.exit(0);
+  }
   if (_startWebServer) {
     // Web-only: keep process alive (no REPL)
     await new Promise(() => {});

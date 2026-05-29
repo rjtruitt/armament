@@ -656,7 +656,7 @@ export class ChannelLifecycle {
       messages: messages.map((m: any, i: number) => ({
         id: `msg-${i}`,
         role: m.role,
-        content: typeof m.content === 'string' ? stripAllAnsi(m.content) : JSON.stringify(m.content),
+        content: typeof m.content === 'string' ? stripAllAnsi(m.content).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '') : JSON.stringify(m.content),
         timestamp: Date.now(),
         metadata: undefined,
         tool_call_id: m.tool_call_id ?? undefined,
@@ -712,17 +712,25 @@ export class ChannelLifecycle {
       agent.importSession({
         messages: loadMsgs.map(m => ({
           role: m.role as 'user' | 'assistant' | 'system' | 'tool',
-          content: stripAllAnsi(m.content),
+          content: stripAllAnsi(m.content).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ''),
           ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
           ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
         })),
       });
     }
 
+    // Restore the channel's model/provider from state if it differs from default
+    if (state.agentConfig?.model && state.agentConfig?.model !== agent?.model) {
+      await this.switchChannelModel(chName, state.agentConfig.model, state.agentConfig.provider || undefined);
+    }
+
+    // Re-fetch agent — switchChannelModel creates a new one if model changed
+    const restoredAgent = this.channelAgents.get(chName);
+
     // Don't restore turn count — start fresh each session. The cache
     // efficiency check uses turnCount to guard against cold-cache warnings.
-    if (agent) {
-      agent.turnCount = 0;
+    if (restoredAgent) {
+      restoredAgent.turnCount = 0;
     }
 
     if (state.chatMessages && state.chatMessages.length > 0) {
@@ -732,8 +740,9 @@ export class ChannelLifecycle {
       }
     }
 
+    const displayModel = state.agentConfig?.model || entry.model;
     this.deps.callbacks.writeMessage('system', '*',
-      `── Session restored (0 turns, ${entry.model}) ──`, chName);
+      `── Session restored (0 turns, ${displayModel}) ──`, chName);
 
     // Don't restore children from state — they're transient runtime state.
     // Workers from previous sessions are long gone. TaskRuntime recreates
@@ -781,6 +790,14 @@ export class ChannelLifecycle {
 
       const agent = this.createChannelAgent(channelName, adapter, newModel, driverType);
       agent.importSession(sessionState);
+      // Re-register any dynamically loaded tools (from request_tools) on the new agent
+      const activeToolNames = this.deps.catalogManager.activeToolNames;
+      if (activeToolNames.length > 0) {
+        const restoredTools = this.deps.catalogManager.restoreTools(activeToolNames);
+        if (restoredTools.length > 0) {
+          agent.registerTools(restoredTools);
+        }
+      }
       this.channelAgents.set(channelName, agent);
       this.deps.refreshProviderStats();
       this.deps.callbacks.writeMessage('system', '*', `Switched to ${provConfig.name ?? provConfig.type}/${newModel}`, channelName);

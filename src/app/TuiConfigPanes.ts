@@ -21,6 +21,7 @@ export interface ConfigPanesDelegate {
   render(): void;
   setActiveChannel(channel: string): void;
   setRenderInterval(ms: number): void;
+  reRenderAllChannels?(activeChannel?: string): void;
 }
 
 /**
@@ -574,6 +575,7 @@ export class TuiConfigPanes {
     }
     if (cfgPath === 'session.showAgentHeader') {
       this.opts.showAgentHeader = typeof value === 'boolean' ? value : value === 'on';
+      this.delegate.reRenderAllChannels?.();
       this.delegate.render();
     }
     if (cfgPath === 'display.renderInterval') {

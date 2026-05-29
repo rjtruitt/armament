@@ -5,6 +5,9 @@ export function getConfigCommands(): CommandRegistration[] {
     {
       name: 'model',
       description: 'Show/change model',
+      getArgCompletions: (_partial: string, ctx: CommandContext): string[] => {
+        return ctx.getAvailableModels().map(m => `${m.provider}/${m.model}`);
+      },
       handler: (args, ctx) => {
         if (args.length > 0) {
           const channel = ctx.activeChannel ?? '#control';

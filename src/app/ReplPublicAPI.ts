@@ -488,6 +488,11 @@ export abstract class ReplPublicAPI extends BaseRepl {
           .map(c => c.name.startsWith('#') ? c.name.slice(1) : c.name)
           .filter(name => name.startsWith(subPartial));
       }
+      if (cmd === '/model') {
+        return this.getAvailableModels()
+          .map(m => `${m.provider}/${m.model}`)
+          .filter(name => name.startsWith(subPartial));
+      }
       return [];
     }
     return commands.filter((c: string) => c.startsWith(partial));

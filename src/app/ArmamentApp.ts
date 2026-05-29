@@ -2,7 +2,7 @@ import * as readline from 'node:readline';
 import { ReplPublicAPI } from './ReplPublicAPI.js';
 import { IReplConfig, IAgentInstance, IAgentSpawnOptions, IUsageStats, IContextUsage, IMessage } from '../core/index.js';
 import { TuiRenderer as TuiMode } from './TuiRenderer.js';
-import { ChannelAgent, AskUserHandler, AskInputType } from '../providers/index.js';
+import { ChannelAgent, AskUserHandler, AskInputType, abortBashProcess } from '../providers/index.js';
 import { dirname } from 'node:path';
 import { getPermissionStore } from './PermissionStore.js';
 import { getGlobalEventBus } from './EventBus.js';
@@ -249,8 +249,9 @@ export class ArmamentApp extends ReplPublicAPI {
         // Also set BaseRepl's singleton flag for wasInterrupted()
         this.interrupted = true;
         if (ch && this._threadCoordinator) this._threadCoordinator.interrupt(ch);
+        if (ch) abortBashProcess(ch);
+        if (ch) this._channelAgents.get(ch)?.interrupt();
         this.tuiMode?.stopThinking(ch);
-        this.tuiMode?.cancelStreamMessage(this.activeChannelName);
         this.tuiMode?.writeMessage('system', '*', '── interrupted ──', this.activeChannelName);
         if ((this.getChannelState(this.activeChannelName ?? '').interruptCount) >= 2 && !this.getChannelProcessing(this.activeChannelName)) {
           this.running = false;
@@ -377,6 +378,10 @@ export class ArmamentApp extends ReplPublicAPI {
         }
       } else if (this.tuiMode && finishedChannel && this.tuiMode.hasStaging(finishedChannel)) {
         this.tuiMode.flushStaging(finishedChannel);
+      }
+      // Drain any queued messages now that we're done processing
+      if (finishedChannel && this._inputQueue.length > 0) {
+        drainInputQueue(finishedChannel, (msg, ch) => this._processMessage(msg, ch), this._inputProcessorDeps()).catch(() => {});
       }
     }
   }

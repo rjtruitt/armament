@@ -18,3 +18,4 @@ export { createTodoTool } from './TodoTool.js';
 export { ReadChannelTool } from './ReadChannelTool.js';
 export { createCrossChannelTools } from './CrossChannelTool.js';
 export { ModelToLLMAdapter } from './ModelToLLMAdapter.js';
+export { abortBashProcess } from './BuiltinToolDefs.js';

@@ -15,6 +15,8 @@ let agent: any = null;
 let interrupted = false;
 let pendingSubworkers: Map<string, { resolve: (response: string) => void; reject: (err: Error) => void }> = new Map();
 let pendingMcpRequests: Map<string, { resolve: (result: any) => void; reject: (err: Error) => void }> = new Map();
+/** Function to kill bash from thread scope — set during initialize(). */
+let killBash: ((channel: string) => void) | null = null;
 
 function send(msg: OutboundMessage): void {
   port.postMessage(msg);
@@ -29,6 +31,8 @@ async function initialize(): Promise<void> {
     const { ProviderPool } = await import('../providers/ProviderPool.js');
     const { ChannelAgent } = await import('../providers/ChannelAgent.js');
     const { getDefaultTools } = await import('../providers/BuiltinTools.js');
+    const { abortBashProcess } = await import('../providers/BuiltinToolDefs.js');
+    killBash = abortBashProcess;
 
     const pool = new ProviderPool({});
     const adapter = await pool.getOrCreate(
@@ -217,6 +221,8 @@ port.on('message', async (msg: InboundMessage) => {
 
     case 'interrupt':
       interrupted = true;
+      if (agent) agent.interrupt();
+      if (killBash) try { killBash(config.channelName); } catch {}
       break;
 
     case 'export_session':
