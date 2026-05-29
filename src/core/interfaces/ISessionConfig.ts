@@ -67,7 +67,7 @@ export interface IMcpServerEntry {
   toolCount: number;
 }
 
-/** Interface for ISessionConfigManager. */
+/** Manages session-level config: workspace, budget, providers, MCP, permissions, and theme. */
 export interface ISessionConfigManager {
   loadConfig(workspacePath: string): ISessionConfigMenu;
   saveConfig(config: ISessionConfigMenu): void;
@@ -79,7 +79,7 @@ export interface ISessionConfigManager {
   mergeWith(overrides: Partial<ISessionConfigMenu>): ISessionConfigMenu;
 }
 
-/** Interface for IPermissionManager. */
+/** Manages filesystem permission checks and prompts the user for access to paths outside the workspace. */
 export interface IPermissionManager {
   checkAccess(path: string, action: PermissionAction): boolean;
   grantAccess(permission: IPathPermission): void;
@@ -93,7 +93,7 @@ export interface IPermissionManager {
   loadPermissions(workspacePath: string): void;
 }
 
-/** Interface for IBudgetManager. */
+/** Tracks LLM spend against warn/freeze thresholds for a session or agent. */
 export interface IBudgetManager {
   getBudget(): IBudgetConfig;
   setBudget(config: Partial<IBudgetConfig>): void;

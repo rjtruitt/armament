@@ -1,4 +1,4 @@
-/** Interface for IRenderer. */
+/** Renders UI components: banners, prompts, status bars, markdown, diffs, file trees, and gradients. */
 export interface IRenderer {
   renderBanner(): string;
   renderMiniBanner(): string;

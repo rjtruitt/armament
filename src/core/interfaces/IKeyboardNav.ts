@@ -50,7 +50,7 @@ export interface INavigationScheme {
   historyUp: IKeyBinding;
   historyDown: IKeyBinding;
 }
-/** Interface for IKeyboardNavigation. */
+/** Keyboard navigation system — manages key bindings, focus state, and navigation schemes. */
 export interface IKeyboardNavigation {
   getFocusState(): IFocusState;
   setFocus(target: NavigationTarget): void;

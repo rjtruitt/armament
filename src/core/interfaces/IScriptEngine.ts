@@ -1,9 +1,9 @@
-/** Interface for IScriptEngine. */
+/** Scripting engine for loading, aliasing, triggering, and binding custom commands. */
 export interface IScriptEngine {
   load(path: string): Promise<void>;
   loadInline(code: string): void;
   unload(name: string): void;
-  eval(expression: string): any;
+  eval(expression: string): unknown;
   getLoadedScripts(): ILoadedScript[];
   getAliases(): IAlias[];
   getTriggers(): ITrigger[];
@@ -19,22 +19,12 @@ export interface IScriptEngine {
   removeTimer(name: string): void;
   executeAlias(name: string, args: string[]): Promise<string | void>;
   checkTriggers(text: string, context: ITriggerContext): Promise<void>;
-  getVariables(): Record<string, any>;
-  setVariable(name: string, value: any): void;
-  getVariable(name: string): any;
+  getVariables(): Record<string, unknown>;
+  setVariable(name: string, value: unknown): void;
+  getVariable(name: string): unknown;
 }
 
-/** Interface for ILoadedScript.
- * @property {string} name - Description of name.
- * @property {string} path - Description of path.
- * @property {string} version - Description of version.
- * @property {string} author - Description of author.
- * @property {string} description - Description of description.
- * @property {string} aliases - Description of aliases.
- * @property {string} triggers - Description of triggers.
- * @property {string} bindings - Description of bindings.
- * @property ... and 1 more properties.
- */
+/** A script loaded from a file or inline code. */
 export interface ILoadedScript {
   name: string;
   path?: string;
@@ -47,13 +37,7 @@ export interface ILoadedScript {
   loadedAt: number;
 }
 
-/** Interface for IAlias.
- * @property {string} name - Description of name.
- * @property {string} pattern - Description of pattern.
- * @property {string} expansion - Description of expansion.
- * @property {string} description - Description of description.
- * @property {string} script - Description of script.
- */
+/** Command alias — expands a pattern into a command with argument interpolation. */
 export interface IAlias {
   name: string;
   pattern: string;
@@ -62,29 +46,16 @@ export interface IAlias {
   script?: string;
 }
 
-/** Interface for IAliasContext.
- * @property {string} channel - Description of channel.
- * @property {string} agent - Description of agent.
- * @property {string} args - Description of args.
- * @property {Record<string, any>} variables - Description of variables.
- */
+/** Context passed to an alias expansion handler. */
 export interface IAliasContext {
   channel: string;
   agent: string;
   args: string[];
-  variables: Record<string, any>;
+  variables: Record<string, unknown>;
   exec: (command: string) => Promise<string | void>;
 }
 
-/** Interface for ITrigger.
- * @property {string} name - Description of name.
- * @property {string} pattern - Description of pattern.
- * @property {string} action - Description of action.
- * @property {string} channel - Description of channel.
- * @property {boolean} enabled - Description of enabled.
- * @property {boolean} once - Description of once.
- * @property {string} description - Description of description.
- */
+/** Pattern-based trigger that fires when matching text is seen (agent output, tool results, etc.). */
 export interface ITrigger {
   name: string;
   pattern: string | RegExp;
@@ -96,13 +67,7 @@ export interface ITrigger {
   description?: string;
 }
 
-/** Interface for ITriggerContext.
- * @property {string} message - Description of message.
- * @property {string} channel - Description of channel.
- * @property {string} agent - Description of agent.
- * @property {string} role - Description of role.
- * @property {RegExpMatchArray} match - Description of match.
- */
+/** Context passed to a trigger handler when its pattern matches. */
 export interface ITriggerContext {
   message: string;
   channel: string;
@@ -112,11 +77,7 @@ export interface ITriggerContext {
   exec: (command: string) => Promise<string | void>;
 }
 
-/** Interface for IKeyBinding.
- * @property {string} key - Description of key.
- * @property {string} action - Description of action.
- * @property {string} description - Description of description.
- */
+/** Keyboard shortcut bound to an action or command. */
 export interface IKeyBinding {
   key: string;
   action: string | (() => Promise<void>);
@@ -124,14 +85,7 @@ export interface IKeyBinding {
   mode?: 'normal' | 'insert' | 'any';
 }
 
-/** Interface for ITimer.
- * @property {string} name - Description of name.
- * @property {number} intervalMs - Description of intervalMs.
- * @property {string} action - Description of action.
- * @property {boolean} repeat - Description of repeat.
- * @property {boolean} enabled - Description of enabled.
- * @property {string} description - Description of description.
- */
+/** Recurring timer that executes an action at a fixed interval. */
 export interface ITimer {
   name: string;
   intervalMs: number;
@@ -141,17 +95,7 @@ export interface ITimer {
   description?: string;
 }
 
-/** Interface for IScriptConfig.
- * @property {string} scriptsDir - Description of scriptsDir.
- * @property {string} flowsDir - Description of flowsDir.
- * @property {string} autoload - Description of autoload.
- * @property {string} autoloadFlows - Description of autoloadFlows.
- * @property {boolean} allowFileSystem - Description of allowFileSystem.
- * @property {boolean} allowNetwork - Description of allowNetwork.
- * @property {boolean} allowExec - Description of allowExec.
- * @property {number} maxExecutionMs - Description of maxExecutionMs.
- * @property ... and 2 more properties.
- */
+/** Configuration for the scripting subsystem. */
 export interface IScriptConfig {
   scriptsDir: string;
   flowsDir: string;
@@ -165,7 +109,7 @@ export interface IScriptConfig {
   model?: string;
 }
 
-/** Interface for IScriptViewAPI. */
+/** View manipulation API exposed to scripts (focus, mute, sidebar, notifications). */
 export interface IScriptViewAPI {
   setViewMode(mode: 'feed' | 'focus' | 'split' | 'watch'): void;
   setFocus(agentId: string): void;

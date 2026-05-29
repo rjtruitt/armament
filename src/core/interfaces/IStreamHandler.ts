@@ -1,4 +1,4 @@
-/** Interface for IStreamHandler. */
+/** Callback interface for streaming LLM responses — token, thinking, tool events, completion. */
 export interface IStreamHandler {
   onToken(token: string): void;
   onThinking(text: string): void;

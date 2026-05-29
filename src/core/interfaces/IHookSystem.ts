@@ -45,19 +45,19 @@ export interface IHook {
 /** Context data passed to a hook handler during execution. */
 export interface IHookContext {
   point: HookPoint;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   channel?: string;
   agent?: string;
   abort: () => void;
-  modify: (key: string, value: any) => void;
+  modify: (key: string, value: unknown) => void;
 }
 /** Result returned by a hook handler indicating if aborted and any modifications. */
 export interface IHookResult {
   aborted: boolean;
-  modified: Record<string, any>;
+  modified: Record<string, unknown>;
   output?: string;
 }
-/** Interface for IHookSystem. */
+/** Hook system for lifecycle events — plugins and scripts can register hooks at specific points. */
 export interface IHookSystem {
   register(hook: IHook): void;
   unregister(name: string): void;

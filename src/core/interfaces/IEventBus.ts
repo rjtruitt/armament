@@ -42,7 +42,7 @@ export type ArmamentEvent =
   | 'file:edit'
   | 'close';
 
-/** Interface for IEventBus. */
+/** Event bus system for pub-sub communication — supports typed events with on/off/once/emit. */
 export interface IEventBus {
   on(event: ArmamentEvent, handler: (...args: any[]) => void): void;
   off(event: ArmamentEvent, handler: (...args: any[]) => void): void;

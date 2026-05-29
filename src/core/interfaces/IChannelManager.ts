@@ -12,7 +12,7 @@ export interface IChannel {
   createdAt: number;
   lastActivity: number;
 }
-/** Interface for IChannelManager. */
+/** Manages channel lifecycle: create, destroy, activate, navigate, and track unread state. */
 export interface IChannelManager {
   create(name: string, opts?: Partial<IChannel>): IChannel;
   destroy(id: string): void;
