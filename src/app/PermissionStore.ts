@@ -52,12 +52,25 @@ export class PermissionStore {
   private _godMode: Set<string> = new Set();
   /** Global god mode override — if true, ALL channels are in god mode. */
   private _globalGodMode = false;
+  /** Maps worker IDs to their parent channel names for godmode inheritance. */
+  private _workerParents: Map<string, string> = new Map();
+
+  /** Register a worker's parent channel so it inherits parent's god mode. */
+  setWorkerParent(workerId: string, parentChannel: string): void {
+    this._workerParents.set(workerId, parentChannel);
+  }
 
   /** Check if a channel has god mode enabled (global or per-channel). Workers inherit parent's god mode. */
   isGodMode(channel: string): boolean {
     if (this._globalGodMode) return true;
     if (this._godMode.has(channel)) return true;
-    // Workers inherit parent's god mode (worker-{parent}-{timestamp})
+    // Check explicit worker-parent mapping
+    const parent = this._workerParents.get(channel);
+    if (parent) {
+      if (this._godMode.has(parent)) return true;
+      if (this._godMode.has(parent.startsWith('#') ? parent : `#${parent}`)) return true;
+    }
+    // Fallback: check if worker ID contains the godmode channel name
     for (const gm of this._godMode) {
       const bare = gm.startsWith('#') ? gm.slice(1) : gm;
       if (channel.includes(`worker-${bare}`) || channel.includes(`-${bare}-`)) return true;

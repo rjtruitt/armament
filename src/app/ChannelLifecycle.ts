@@ -735,18 +735,9 @@ export class ChannelLifecycle {
     this.deps.callbacks.writeMessage('system', '*',
       `── Session restored (0 turns, ${entry.model}) ──`, chName);
 
-    if (state.children && state.children.length > 0) {
-      const activeChildren = state.children.filter(c => c.turnCount > 0 || c.status !== 'idle');
-      for (const child of activeChildren) {
-        const workerLabel = child.id.replace(/^worker-/, '').replace(/-\d+$/, '').slice(0, 15);
-        this.deps.callbacks.addChannelChild(chName, {
-          id: child.id,
-          label: workerLabel,
-          status: child.status === 'complete' ? 'done' : 'idle',
-          role: 'worker',
-        });
-      }
-    }
+    // Don't restore children from state — they're transient runtime state.
+    // Workers from previous sessions are long gone. TaskRuntime recreates
+    // them as needed when new workers are spawned.
   }
 
   /** Switch the model/provider on an existing channel. */

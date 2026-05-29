@@ -113,6 +113,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
         mkdirSync(workerSandbox, { recursive: true });
         worker.setWorkspace(`${workerSandbox}:${parentRoot}:/tmp:/dev`);
         getPermissionStore().rememberPath(worker.name, parentRoot);
+        getPermissionStore().setWorkerParent(worker.name, chName);
       } catch (e) {
         logError('a2a', `Worker sandbox setup failed for ${worker.name}: ${e instanceof Error ? e.message : String(e)}`);
       }
