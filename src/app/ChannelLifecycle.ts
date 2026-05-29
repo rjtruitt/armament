@@ -736,7 +736,8 @@ export class ChannelLifecycle {
       `── Session restored (0 turns, ${entry.model}) ──`, chName);
 
     if (state.children && state.children.length > 0) {
-      for (const child of state.children) {
+      const activeChildren = state.children.filter(c => c.turnCount > 0 || c.status !== 'idle');
+      for (const child of activeChildren) {
         const workerLabel = child.id.replace(/^worker-/, '').replace(/-\d+$/, '').slice(0, 15);
         this.deps.callbacks.addChannelChild(chName, {
           id: child.id,

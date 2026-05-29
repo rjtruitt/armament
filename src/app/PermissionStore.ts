@@ -53,10 +53,16 @@ export class PermissionStore {
   /** Global god mode override — if true, ALL channels are in god mode. */
   private _globalGodMode = false;
 
-  /** Check if a channel has god mode enabled (global or per-channel). */
+  /** Check if a channel has god mode enabled (global or per-channel). Workers inherit parent's god mode. */
   isGodMode(channel: string): boolean {
     if (this._globalGodMode) return true;
-    return this._godMode.has(channel);
+    if (this._godMode.has(channel)) return true;
+    // Workers inherit parent's god mode (worker-{parent}-{timestamp})
+    for (const gm of this._godMode) {
+      const bare = gm.startsWith('#') ? gm.slice(1) : gm;
+      if (channel.includes(`worker-${bare}`) || channel.includes(`-${bare}-`)) return true;
+    }
+    return false;
   }
 
   /** Toggle per-channel god mode. Returns new state. */
