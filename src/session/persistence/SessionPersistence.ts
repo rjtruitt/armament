@@ -127,6 +127,15 @@ export class SessionPersistence implements ISessionPersistence {
   }
 
   /**
+   * List all channels with saved state files, regardless of manifest.
+   * Returns the raw channel names as stored in state file names — caller
+   * should load the state to get the canonical channel name.
+   */
+  listChannels(): string[] {
+    return this._channelStore ? this._channelStore.listAll() : [];
+  }
+
+  /**
    * Backup.
    */
   async backup(): Promise<void> {

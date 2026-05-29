@@ -284,5 +284,26 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
         tui.setActiveChannel(manifest.activeChannel);
       }
     }
+  } else {
+    // Fallback: no manifest but state files may exist.
+    // Reconstruct a virtual manifest from saved state files.
+    const slugs = deps.sessionPersistence.listChannels();
+    if (slugs.length > 0) {
+      tui.writeMessage('system', 'info', `Restoring ${slugs.length} channel(s) from saved state (no manifest)`, '#control');
+      for (const slug of slugs) {
+        const state = await deps.sessionPersistence.loadChannelState(slug);
+        if (!state) continue;
+        const entry: IChannelManifestEntry = {
+          name: state.channelName,
+          stateFile: `channels/${slug}.state.json`,
+          status: 'suspended',
+          model: state.agentConfig?.model || '',
+          provider: state.agentConfig?.provider || '',
+          turnCount: state.turnCount || 0,
+          lastActivity: Date.now(),
+        };
+        await deps.resumeChannel(entry, state);
+      }
+    }
   }
 }
