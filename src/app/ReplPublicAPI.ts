@@ -5,6 +5,7 @@ import { McpServer } from './McpManager.js';
 import { getCommandNames } from './CommandRegistry.js';
 import { runNonInteractive, runSetupWizard } from './ReplStartup.js';
 import * as Render from './RenderHelpers.js';
+import type { IFileEntry, ICommitInfo } from '../core/interfaces/IRenderer.js';
 
 import type { TuiRenderer } from './TuiRenderer.js';
 import type { CommandDispatch, CommandContext } from './CommandDispatch.js';
@@ -398,7 +399,7 @@ export abstract class ReplPublicAPI extends BaseRepl {
   /**
    * Render file tree.
    */
-  renderFileTree(entries: any[]): string { return Render.renderFileTree(entries); }
+  renderFileTree(entries: IFileEntry[]): string { return Render.renderFileTree(entries); }
   /**
    * Render file path.
    */
@@ -406,7 +407,7 @@ export abstract class ReplPublicAPI extends BaseRepl {
   /**
    * Render commit.
    */
-  renderCommit(commit: any): string { return Render.renderCommit(commit); }
+  renderCommit(commit: ICommitInfo): string { return Render.renderCommit(commit); }
   /**
    * Render status.
    */
@@ -418,11 +419,11 @@ export abstract class ReplPublicAPI extends BaseRepl {
   /**
    * Render image.
    */
-  renderImage(content: any): string { return Render.renderImage(content); }
+  renderImage(content: { type?: string; mimeType?: string; data?: string | { length?: number } }): string { return Render.renderImage(content); }
   /**
    * Checks whether image content.
    */
-  isImageContent(content: any): boolean { return Render.isImageContent(content); }
+  isImageContent(content: { type?: string; mimeType?: string; data?: string | { length?: number } }): boolean { return Render.isImageContent(content); }
 
 
   // ─── History / completions ─────────────────────────────────────────────────

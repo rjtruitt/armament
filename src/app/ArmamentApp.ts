@@ -169,7 +169,8 @@ export class ArmamentApp extends ReplPublicAPI {
       catalogManager: this._services.catalogManager,
       getMcpServers: () => this.mcpServers,
       driftManager: this._services.driftManager,
-      webUrl: (globalThis as any).__armamentWebUrl,
+      // Globally injected by web UI wrapper
+      webUrl: (globalThis as unknown as Record<string, string | undefined>).__armamentWebUrl,
     });
 
     if (useTui) {
@@ -183,7 +184,7 @@ export class ArmamentApp extends ReplPublicAPI {
             id: req.id, source: req.channel,
             question: `${toolName} wants to access:\n${req.path}`,
             options: ['Deny', 'Allow once', 'Allow and remember folder'],
-            inputType: 'radio' as any, timestamp: new Date(),
+            inputType: 'radio', timestamp: new Date(),
           });
         }
       });
@@ -323,7 +324,7 @@ export class ArmamentApp extends ReplPublicAPI {
     this.emitEvent('interrupt', {});
     if (!ch) {
       // No active channel — use singleton counters for double-escape
-      if (this.interruptCount >= 2 && !(this as any).processing) this.running = false;
+      if (this.interruptCount >= 2 && !this.processing) this.running = false;
       return;
     }
     const state = this.getChannelState(ch);
@@ -645,7 +646,7 @@ export class ArmamentApp extends ReplPublicAPI {
       setInterrupted: (channel: string, state: boolean) => { this.getChannelState(channel).interrupted = state; },
       setInterruptCount: (channel: string, count: number) => { this.getChannelState(channel).interruptCount = count; },
       handleUserMessage: (input: string) => this.handleUserMessage(input),
-      injectPluginContext: (cmd: string, content: any, args: string[]) => this._pluginIntegration.injectPluginContext(cmd, content, args),
+      injectPluginContext: (cmd: string, content: string, args: string[]) => this._pluginIntegration.injectPluginContext(cmd, content, args),
       stop: () => this.stop(),
       clearSession: () => this.clearSession(),
       output: (text: string) => this.output(text),
@@ -733,7 +734,7 @@ export class ArmamentApp extends ReplPublicAPI {
     return buildCommandContext(host);
   }
 
-  private _getChannelStatus(channel: string): any {
+  private _getChannelStatus(channel: string): { tokens: number; cacheRead?: number; cacheWrite?: number; model: string; provider: string; status: string } | null {
     return getChannelStatus(channel, this._monitoringDeps());
   }
 
