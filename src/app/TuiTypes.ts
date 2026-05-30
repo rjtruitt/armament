@@ -41,11 +41,11 @@ export interface TuiMenuConfig {
 /** Per-channel status metadata displayed in the status bar. */
 export interface ChannelStatus {
   tokens: number;
-  cacheRead: number;
-  cacheWrite: number;
+  cacheRead?: number;
+  cacheWrite?: number;
   model: string;
   provider: string;
-  status: 'idle' | 'thinking' | 'tool_use' | 'complete' | 'error';
+  status: string;
   contextPercent?: number;
   contextTokens?: number;
 }
@@ -64,8 +64,8 @@ export interface TuiRendererOptions {
   onInterrupt?: () => void;
   isProcessing?: () => boolean;
   onChannelSwitch?: (channel: string) => void;
-  onMcpAdd?: (name: string, config: any) => void;
-  onMcpConfigChange?: (serverName: string, fieldPath: string, value: any) => void;
+  onMcpAdd?: (name: string, config: Record<string, unknown>) => void;
+  onMcpConfigChange?: (serverName: string, fieldPath: string, value: unknown) => void;
   onMcpRemove?: (serverName: string) => void;
   onMcpShow?: () => void;
   getChannelStatus?: (channel: string) => ChannelStatus | null;

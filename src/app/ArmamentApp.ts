@@ -26,6 +26,7 @@ import {
   buildExitSummary as doBuildExitSummary,
   getChannelStatus,
 } from './AppMonitoring.js';
+import type { ChannelStatus } from './TuiTypes.js';
 import { handleUserMessage as doHandleUserMessage } from './MessageHandler.js';
 
 /**
@@ -214,7 +215,7 @@ export class ArmamentApp extends ReplPublicAPI {
     const wiringDeps = this._buildTuiWiringDeps();
     const opts = buildTuiOptions(wiringDeps);
     this.tuiMode = new TuiMode(opts);
-    (wiringDeps as any)._tuiRef = this.tuiMode;
+    wiringDeps._tuiRef = this.tuiMode;
     this.tuiMode.start();
     configureTuiPostCreate(this.tuiMode, wiringDeps);
     restoreSession(this.tuiMode, wiringDeps).catch(() => {});
@@ -734,7 +735,7 @@ export class ArmamentApp extends ReplPublicAPI {
     return buildCommandContext(host);
   }
 
-  private _getChannelStatus(channel: string): { tokens: number; cacheRead?: number; cacheWrite?: number; model: string; provider: string; status: string } | null {
+  private _getChannelStatus(channel: string): ChannelStatus | null {
     return getChannelStatus(channel, this._monitoringDeps());
   }
 

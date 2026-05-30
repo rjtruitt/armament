@@ -1,6 +1,6 @@
 import { ScreenBuffer, LayoutManager } from '../tui/index.js';
 import { THEMES, type ThemeColors, fgRgb, RESET } from '../rendering/index.js';
-import type { RGB, TuiRendererOptions, ControlDashboardData } from './TuiTypes.js';
+import type { RGB, TuiRendererOptions, ControlDashboardData, ChannelStatus } from './TuiTypes.js';
 import type { StatusPart } from './TuiPainter.js';
 
 /** Class representing TuiStatusPainter. */
@@ -173,7 +173,7 @@ export class TuiStatusPainter {
     channel: string,
     values: { provider: string; model: string; agents: number; cost: { current: number; budget: number }; metrics?: Record<string, string> },
     approvalPending: number,
-    getChannelStatus?: (channel: string) => { tokens: number; cacheRead?: number; cacheWrite?: number; model: string; provider: string; status: string; contextPercent?: number; contextTokens?: number } | null,
+    getChannelStatus?: (channel: string) => ChannelStatus | null,
   ): StatusPart[] {
     const parts: StatusPart[] = [];
     const chStatus = getChannelStatus?.(channel);

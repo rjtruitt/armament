@@ -13,6 +13,7 @@ import type { TuiRenderer } from './TuiRenderer.js';
 import type { IReplConfig } from '../core/index.js';
 import type { ThreadCoordinator } from '../threads/index.js';
 import type { ChannelInfo, AgentInfo } from './ChannelLifecycle.js';
+import type { ChannelStatus } from './TuiTypes.js';
 
 /**
  * Monitoring deps interface.
@@ -110,7 +111,7 @@ export function buildExitSummary(deps: MonitoringDeps): string {
 export function getChannelStatus(
   channel: string,
   deps: MonitoringDeps,
-): any {
+): ChannelStatus | null {
   const channelAgents = deps.getChannelAgents();
   const agent = channelAgents.get(channel) ?? channelAgents.get(channel.replace(/^#/, ''));
   if (agent) {
@@ -127,7 +128,7 @@ export function getChannelStatus(
     return {
       tokens: threadInfo.totalTokens, cacheRead: threadInfo.cacheRead, cacheWrite: threadInfo.cacheWrite,
       model: threadInfo.model, provider: threadInfo.providerType,
-      status: (statusMap[threadInfo.status] ?? threadInfo.status) as any,
+      status: statusMap[threadInfo.status] ?? threadInfo.status,
       contextPercent: threadInfo.contextPercent, contextTokens: threadInfo.contextTokens,
     };
   }

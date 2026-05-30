@@ -1,6 +1,6 @@
 import { ScreenBuffer, LayoutManager, Sidebar, InputBar, FocusManager, ScrollBuffer, ApprovalWidget, ConfigPane } from '../tui/index.js';
 import { THEMES, type ThemeColors, fgRgb } from '../rendering/index.js';
-import type { RGB, TuiRendererOptions, ControlDashboardData } from './TuiTypes.js';
+import type { RGB, TuiRendererOptions, ControlDashboardData, ChannelStatus } from './TuiTypes.js';
 import { TuiConfigPainter } from './TuiConfigPainter.js';
 import { TuiContentPainter } from './TuiContentPainter.js';
 import { TuiStatusPainter } from './TuiStatusPainter.js';
@@ -313,7 +313,7 @@ export class TuiPainter {
     channel: string,
     values: { provider: string; model: string; agents: number; cost: { current: number; budget: number } },
     approvalPending: number,
-    getChannelStatus?: (channel: string) => { tokens: number; cacheRead?: number; cacheWrite?: number; model: string; provider: string; status: string; contextPercent?: number; contextTokens?: number } | null,
+    getChannelStatus?: (channel: string) => ChannelStatus | null,
   ): StatusPart[] {
     return this.statusPainter.getContextualStatusParts(channel, values, approvalPending, getChannelStatus);
   }

@@ -14,6 +14,8 @@ import type { SessionState } from './SessionState.js';
 import type { DriftManager } from '../drift/index.js';
 import type { ChannelInfo } from './ChannelLifecycle.js';
 import type { CommandDispatch } from './CommandDispatch.js';
+import type { ChannelStatus } from './TuiTypes.js';
+import type { IModelPricing } from '../core/interfaces/IProviderConfig.js';
 
 /**
  * Tui wiring deps interface.
@@ -43,9 +45,11 @@ export interface TuiWiringDeps {
   getAvailableModels: () => { provider: string; model: string; region?: string; profile?: string }[];
   switchChannelModel: (ch: string, model: string, provider?: string) => Promise<void>;
   joinChannel: (name: string) => void;
-  getChannelStatus: (channel: string) => any;
+  getChannelStatus: (channel: string) => ChannelStatus | null;
   getCommandDispatch: () => CommandDispatch | null;
   buildCommandContext: () => import('./CommandDispatch.js').CommandContext;
+  /** Internal reference set by ArmamentApp after TUI creation — used by MCP callbacks to write messages. */
+  _tuiRef?: TuiMode;
 }
 
 /**
@@ -60,8 +64,8 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
     showThinkingOverlay: UserConfig.instance().settings.session.showThinkingOverlay,
     showAgentHeader: UserConfig.instance().settings.session.showAgentHeader,
     menuConfig: {
-      providers: deps.config.providers.map((p: any) => ({
-        type: p.type ?? p, models: (p.models ?? []).map((m: any) => typeof m === 'string' ? m : m.name),
+      providers: deps.config.providers.map((p) => ({
+        type: p.type ?? p, models: (p.models ?? []).map((m: string | IModelPricing) => typeof m === 'string' ? m : m.name),
         region: p.region, profile: p.profile,
       })),
       mcpServers: deps.mcpIntegration.loadMcpConfig().map(e => e.name),
@@ -74,29 +78,36 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
     onExit: () => { deps.stop(); },
     onInterrupt: () => { deps.interrupt(); },
     isProcessing: () => deps.isProcessing(),
-    onMcpAdd: (name: string, config: any) => {
+    onMcpAdd: (name: string, config: Record<string, unknown>) => {
       deps.mcpIntegration.connectMcp(name, config).then(() => {
         const toolCount = deps.getMcpServers().get(name)?.tools.length ?? 0;
         // TUI message written by caller after tui is set
-        (deps as any)._tuiRef?.writeMessage('system', 'mcp', `✓ ${name} connected (${toolCount} tools)`, '#control');
+        deps._tuiRef?.writeMessage('system', 'mcp', `✓ ${name} connected (${toolCount} tools)`, '#control');
       }).catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        (deps as any)._tuiRef?.writeMessage('system', 'mcp', `✗ ${name} failed: ${msg}`, '#control');
+        deps._tuiRef?.writeMessage('system', 'mcp', `✗ ${name} failed: ${msg}`, '#control');
       });
     },
-    onMcpConfigChange: (serverName: string, fieldPath: string, value: any) => {
+    onMcpConfigChange: (serverName: string, fieldPath: string, value: unknown) => {
       if (UserConfig.instance().getNoPersist()) return;
       const configs = deps.mcpIntegration.loadMcpConfig();
       const entry = configs.find(c => c.name === serverName);
       if (entry) {
         const parts = fieldPath.split('.');
-        let target = entry.config;
+        const config = entry.config as Record<string, unknown>;
+        // Navigate to parent object via path
+        let current: Record<string, unknown> = config;
         for (let i = 0; i < parts.length - 1; i++) {
-          if (!target[parts[i]]) target[parts[i]] = {};
-          target = target[parts[i]];
+          const key = parts[i];
+          const child = current[key];
+          if (!child || typeof child !== 'object') {
+            current[key] = {};
+          }
+          current = current[key] as Record<string, unknown>;
         }
+        const lastKey = parts[parts.length - 1];
         // Parse env string "KEY=val;KEY2=val2" into object { KEY: "val", KEY2: "val2" }
-        if (parts[parts.length - 1] === 'env' && typeof value === 'string') {
+        if (lastKey === 'env' && typeof value === 'string') {
           const obj: Record<string, string> = {};
           if (value.trim()) {
             for (const pair of value.split(';')) {
@@ -106,15 +117,15 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
               }
             }
           }
-          target.env = obj;
+          current['env'] = obj;
         // Parse args string into array
-        } else if (parts[parts.length - 1] === 'args' && typeof value === 'string') {
-          target.args = value.trim() ? value.trim().split(/\s+/) : [];
+        } else if (lastKey === 'args' && typeof value === 'string') {
+          current['args'] = value.trim() ? value.trim().split(/\s+/) : [];
         // Parse autoApprove comma-separated string into array
-        } else if (parts[parts.length - 1] === 'autoApprove' && typeof value === 'string') {
-          target.autoApprove = value.trim() ? value.trim().split(/\s*,\s*/) : [];
+        } else if (lastKey === 'autoApprove' && typeof value === 'string') {
+          current['autoApprove'] = value.trim() ? value.trim().split(/\s*,\s*/) : [];
         } else {
-          target[parts[parts.length - 1]] = value;
+          current[lastKey] = value;
         }
         const file = path.join(homedir(), '.arma', 'mcp.json');
         fs.writeFileSync(file, JSON.stringify(configs, null, 2), 'utf8');
@@ -127,8 +138,8 @@ export function buildTuiOptions(deps: TuiWiringDeps): ConstructorParameters<type
         const configs = deps.mcpIntegration.loadMcpConfig().filter(c => c.name !== serverName);
         const file = path.join(homedir(), '.arma', 'mcp.json');
         fs.writeFileSync(file, JSON.stringify(configs, null, 2), 'utf8');
-        (deps as any)._tuiRef?.writeMessage('system', 'mcp', `✓ ${serverName} removed`, '#control');
-        (deps as any)._tuiRef?.rebuildMcpMenu(configs.map(e => e.name), configs);
+        deps._tuiRef?.writeMessage('system', 'mcp', `✓ ${serverName} removed`, '#control');
+        deps._tuiRef?.rebuildMcpMenu(configs.map(e => e.name), configs);
       }).catch(() => {});
     },
     onChannelSwitch: (channel: string) => { deps.setActiveChannel(channel); },
@@ -205,13 +216,13 @@ export function configureTuiPostCreate(tui: TuiMode, deps: TuiWiringDeps): void 
   let defaultEffort = '';
   if (defaultModel && defaultProvider) {
     const models = defaultProvider.models ?? [];
-    const matched = models.find((m: any) => (typeof m === 'string' ? m : m.name) === defaultModel);
+    const matched = models.find((m: string | IModelPricing) => (typeof m === 'string' ? m : m.name) === defaultModel);
     if (matched && typeof matched === 'object' && !Array.isArray(matched)) {
-      const opts = (matched as any).options ?? {};
-      defaultEffort = opts.reasoning_effort ?? opts.output_config?.effort ?? '';
+      const opts = (matched as IModelPricing).options ?? {};
+      defaultEffort = (opts.reasoning_effort as string) ?? ((opts.output_config as Record<string, unknown>)?.effort as string) ?? '';
     }
   }
-  tui.updateStatus({ provider: defaultProviderName as string, model: defaultModel || 'none', effort: defaultEffort });
+  tui.updateStatus({ provider: defaultProviderName, model: defaultModel || 'none', effort: defaultEffort });
   tui.setGodMode(getPermissionStore().isGodMode(tui.getActiveChannel()));
 
   if (defaultProvider && defaultModel) {
