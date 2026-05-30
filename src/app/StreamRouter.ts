@@ -253,18 +253,10 @@ export class StreamRouter {
             await new Promise(r => setImmediate(r));
             const queue = this.deps.getInputQueue();
             if (queue.length > 0) {
-              // If the user hit Ctrl+C, don't drain the queue — discard pending messages
+              // If user hit Ctrl+C, don't inject messages mid-stream — leave them
+              // in the queue so _processMessage's finally block can drain them
+              // after the interrupt is handled.
               if (interrupted?.()) {
-                const remaining: (string | { text: string; channel: string })[] = [];
-                while (queue.length > 0) {
-                  const entry = queue.shift()!;
-                  const entryChannel = typeof entry === 'string' ? undefined : (entry as { text: string; channel: string }).channel;
-                  // Keep messages for OTHER channels, drop for this channel
-                  if (entryChannel !== undefined && entryChannel !== target.channel) {
-                    remaining.push(entry);
-                  }
-                }
-                for (const entry of remaining) queue.push(entry);
                 tui?.flushStaging(target.channel);
               } else {
                 tui?.flushStaging(target.channel);

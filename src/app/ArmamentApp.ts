@@ -372,27 +372,17 @@ export class ArmamentApp extends ReplPublicAPI {
       state.processing = false;
       const finishedChannel = channel;
       if (state.interrupted) {
-        // User hit Ctrl+C — discard staging AND clear queued messages for this channel
+        // User hit Ctrl+C — stop the current operation, flush staging (discard)
         if (this.tuiMode && finishedChannel) {
           this.tuiMode.flushStaging(finishedChannel);
         }
-        // Remove any queued messages for this channel — user interrupted to stop, not fast-forward
-        if (finishedChannel) {
-          const remaining: (string | { text: string; channel: string })[] = [];
-          while (this._inputQueue.length > 0) {
-            const entry = this._inputQueue.shift()!;
-            const entryChannel = typeof entry === 'string' ? undefined : (entry as { text: string; channel: string }).channel;
-            if (entryChannel !== undefined && entryChannel !== finishedChannel) {
-              remaining.push(entry);
-            }
-          }
-          for (const entry of remaining) this._inputQueue.push(entry);
-        }
+        // Reset interrupt flag so drainInputQueue can process queued messages
+        state.interrupted = false;
       } else if (this.tuiMode && finishedChannel && this.tuiMode.hasStaging(finishedChannel)) {
         this.tuiMode.flushStaging(finishedChannel);
       }
-      // Drain any queued messages for this channel (unless interrupted)
-      if (!state.interrupted && finishedChannel && this._inputQueue.length > 0) {
+      // Drain any queued messages for this channel
+      if (finishedChannel && this._inputQueue.length > 0) {
         drainInputQueue(finishedChannel, (msg, ch) => this._processMessage(msg, ch), this._inputProcessorDeps()).catch(() => {});
       }
     }
