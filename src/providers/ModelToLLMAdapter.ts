@@ -139,10 +139,17 @@ export class ModelToLLMAdapter implements ILLMProvider {
       }
 
       if (m.role === 'tool' && m.tool_call_id) {
+        const toolContent = typeof m.content === 'string'
+          ? sanitizeContent(m.content)
+          : (m.content as Record<string, unknown>[]).map(b =>
+              b.type === 'text' && typeof b.text === 'string'
+                ? { ...b, text: sanitizeContent(b.text) }
+                : b
+            );
         content.push({
           type: 'tool_result' as const,
           toolCallId: m.tool_call_id,
-          content: m.content || '',
+          content: toolContent,
         });
       }
 
@@ -278,10 +285,17 @@ export class ModelToLLMAdapter implements ILLMProvider {
         }
       }
       if (m.role === 'tool' && m.tool_call_id) {
+        const toolContent = typeof m.content === 'string'
+          ? sanitizeContent(m.content)
+          : (m.content as Record<string, unknown>[]).map(b =>
+              b.type === 'text' && typeof b.text === 'string'
+                ? { ...b, text: sanitizeContent(b.text) }
+                : b
+            );
         content.push({
           type: 'tool_result' as const,
           toolCallId: m.tool_call_id,
-          content: m.content || '',
+          content: toolContent,
         });
       }
       const msg: Record<string, unknown> = { role: m.role, content };
