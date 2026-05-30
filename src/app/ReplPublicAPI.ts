@@ -2,7 +2,6 @@ import { BaseRepl, IUsageStats, IContextUsage, IMessage, IToolResult } from '../
 import { ProviderPool } from '../providers/index.js';
 import { ChannelInfo, AgentInfo } from './ChannelLifecycle.js';
 import { McpServer } from './McpManager.js';
-import { getCommandNames } from './CommandRegistry.js';
 import { runNonInteractive, runSetupWizard } from './ReplStartup.js';
 import * as Render from './RenderHelpers.js';
 import type { IFileEntry, ICommitInfo } from '../core/interfaces/IRenderer.js';
@@ -449,7 +448,7 @@ export abstract class ReplPublicAPI extends BaseRepl {
    * Gets the completions.
    */
   getCompletions(partial: string): string[] {
-    const commands = getCommandNames();
+    const commands = (this._commandDispatch?.getRegistrations() ?? []).map(r => '/' + r.name);
     const parts = partial.split(/\s+/);
     if (parts.length > 1) {
       const cmd = parts[0];

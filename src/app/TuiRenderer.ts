@@ -4,7 +4,6 @@ import { homedir } from 'node:os';
 import { cwd } from 'node:process';
 /** @fileoverview Terminal UI entry point — renders all channels, config panes, sidebar, status bar. */
 import { ScreenBuffer, LayoutManager, Sidebar, InputBar, StatusBar, CommandPalette, type CommandDef, FocusManager, MouseHandler, ApprovalWidget, type ApprovalRequest, type ChatMessage } from '../tui/index.js';
-import { getCommandsForPalette } from './CommandRegistry.js';
 import { getRedirectedRoot } from './ChannelPaths.js';
 import { TuiPainter } from './TuiPainter.js';
 import { TuiInputHandler, type InputHandlerDelegate } from './TuiInputHandler.js';
@@ -67,7 +66,7 @@ export class TuiRenderer {
     this.sidebar = new Sidebar(this.screen, { x: li.sidebar.col, y: li.sidebar.row, width: li.sidebar.width, height: li.sidebar.height });
     this.inputBar = new InputBar(this.screen, { x: li.inputBar.col, y: li.inputBar.row, width: li.inputBar.width, height: 1 }, { externalRender: true });
     this.statusBar = new StatusBar(this.screen, { x: li.statusBar.col, y: li.statusBar.row, width: li.statusBar.width, height: 1 });
-    const paletteCommands = opts.getCommandDispatch?.()?.getPaletteCommands() ?? getCommandsForPalette();
+    const paletteCommands = opts.getCommandDispatch?.()?.getPaletteCommands() ?? [];
     this.commandPalette = new CommandPalette(this.screen, { x: li.inputBar.col, y: li.inputBar.row - 1, width: li.inputBar.width, height: 10 }, { theme: opts.theme, noColor: opts.noColor, commands: paletteCommands });
     this.focusManager = new FocusManager({ initialFocus: 'input', regions: ['input', 'sidebar', 'main', 'palette'] });
     this.focusManager.setRegionVisible('palette', false);

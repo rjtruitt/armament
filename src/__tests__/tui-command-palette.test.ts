@@ -5,9 +5,48 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ScreenBuffer } from '../tui/ScreenBuffer.js';
 import { CommandPalette, type CommandDef } from '../tui/CommandPalette.js';
-import { getCommandsForPalette } from '../app/CommandRegistry.js';
-
-const PALETTE_COMMANDS = getCommandsForPalette();
+/** Inline command list — was generated from ../app/CommandRegistry.ts before it was deleted. */
+const PALETTE_COMMANDS: Array<{ name: string; description: string; usage?: string; category: 'irc' | 'standard' | 'config' }> = [
+  { name: 'join', description: 'Create/switch to agent channel', usage: '/join <name>', category: 'irc' },
+  { name: 'part', description: 'Leave/close an agent channel', usage: '/part [name]', category: 'irc' },
+  { name: 'leave', description: 'Leave/close an agent channel', usage: '/leave [name]', category: 'irc' },
+  { name: 'spawn', description: 'Spawn a new agent in its own channel', usage: '/spawn <name> [--model m] [--provider p]', category: 'irc' },
+  { name: 'kill', description: 'Kill a running agent', usage: '/kill <name>', category: 'irc' },
+  { name: 'list', description: 'List all channels/agents', usage: '/list', category: 'irc' },
+  { name: 'switch', description: 'Switch active channel', usage: '/switch <n|name>', category: 'irc' },
+  { name: 'msg', description: 'Send message to specific agent', usage: '/msg <agent> <message>', category: 'irc' },
+  { name: 'whois', description: 'Show agent info (model, tokens, cost)', usage: '/whois <agent>', category: 'irc' },
+  { name: 'nick', description: 'Rename current agent', usage: '/nick <name>', category: 'irc' },
+  { name: 'topic', description: 'Set system prompt for current channel', usage: '/topic <prompt>', category: 'irc' },
+  { name: 'who', description: 'Show agents in current channel', usage: '/who', category: 'irc' },
+  { name: 'quit', description: 'Exit armament', usage: '/quit', category: 'standard' },
+  { name: 'clear', description: 'Clear screen', usage: '/clear', category: 'standard' },
+  { name: 'clear-session', description: 'Delete saved session data', usage: '/clear-session', category: 'standard' },
+  { name: 'status', description: 'Show session status', usage: '/status', category: 'standard' },
+  { name: 'tools', description: 'List available tools', usage: '/tools', category: 'standard' },
+  { name: 'model', description: 'Show/change model', usage: '/model [name]', category: 'standard' },
+  { name: 'cost', description: 'Show cost summary', usage: '/cost', category: 'standard' },
+  { name: 'context', description: 'Show context usage', usage: '/context', category: 'standard' },
+  { name: 'history', description: 'Show conversation history', usage: '/history', category: 'standard' },
+  { name: 'undo', description: 'Undo last action', usage: '/undo', category: 'standard' },
+  { name: 'save_context', description: 'Save context for future use', usage: '/save_context <name> [description]', category: 'standard' },
+  { name: 'load_context', description: 'Load a saved context', usage: '/load_context [name]', category: 'standard' },
+  { name: 'compact', description: 'Compact context window (summarize old messages)', usage: '/compact', category: 'standard' },
+  { name: 'pin', description: 'Pin a file to survive compaction', usage: '/pin <filepath>', category: 'standard' },
+  { name: 'unpin', description: 'Unpin a file', usage: '/unpin <filepath>', category: 'standard' },
+  { name: 'stats', description: 'Show session statistics', usage: '/stats', category: 'standard' },
+  { name: 'sticky', description: 'Add/list sticky note reminders', usage: '/sticky [text]', category: 'standard' },
+  { name: 'unsticky', description: 'Remove a sticky note', usage: '/unsticky <index>', category: 'standard' },
+  { name: 'setroot', description: 'Set custom root directory for this channel', usage: '/setroot <path>', category: 'standard' },
+  { name: 'help', description: 'Show command help and usage', usage: '/help [command]', category: 'standard' },
+  { name: 'thinking', description: 'Toggle thinking display', usage: '/thinking', category: 'config' },
+  { name: 'verbose', description: 'Toggle verbose mode', usage: '/verbose', category: 'config' },
+  { name: 'permissions', description: 'Show permission settings', usage: '/permissions', category: 'config' },
+  { name: 'theme', description: 'Show/change theme', usage: '/theme [name]', category: 'config' },
+  { name: 'config', description: 'Open configuration menu', usage: '/config', category: 'config' },
+  { name: 'set', description: 'Set config value', usage: '/set <key> <value>', category: 'config' },
+  { name: 'provider', description: 'Show/change provider for this channel', usage: '/provider [name]', category: 'config' },
+];
 
 describe('CommandPalette', () => {
   let buffer: ScreenBuffer;
@@ -590,9 +629,9 @@ describe('CommandPalette', () => {
       expect(ircCommands.length).toBe(12);
     });
 
-    it('standard commands should have correct count (26)', () => {
+    it('standard commands should have correct count (20)', () => {
       const stdCommands = palette.getCommandsByCategory('standard');
-      expect(stdCommands.length).toBe(26);
+      expect(stdCommands.length).toBe(20);
     });
 
     it('all categories should sum to total commands', () => {

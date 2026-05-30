@@ -5,14 +5,6 @@ import type { CommandRegistration, CommandContext } from '../CommandDispatch.js'
 export function getSessionCommands(): CommandRegistration[] {
   return [
     {
-      name: 'help',
-      description: 'Show available commands',
-      handler: (_args, _ctx) => ({
-        handled: true,
-        output: 'Available commands: /help, /join, /part, /spawn, /kill, /list, /switch, /msg, /whois, /who, /quit',
-      }),
-    },
-    {
       name: 'quit',
       aliases: ['exit', 'q'],
       description: 'Exit armament',
