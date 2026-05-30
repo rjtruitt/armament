@@ -98,6 +98,12 @@ export class ConfigPane {
   private _listViews: Map<string, ListView> = new Map();
   private _listActions: Map<string, ListAction[]> = new Map();
   private _defaultActions: Map<string, string> = new Map();
+
+  /** Get the default action key for the current panel (e.g. 'm' for models). */
+  getDefaultAction(): string | undefined {
+    return this._defaultActions.get(this.currentPanelId);
+  }
+
   private _detailConfigs: Map<string, (row: ListRow) => DetailConfig> = new Map();
   /**
    * onNavigate property.

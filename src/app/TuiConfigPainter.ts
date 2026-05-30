@@ -278,7 +278,9 @@ export class TuiConfigPainter {
       actLine = actLine.slice(0, maxWidth);
       this.screen.writeAt(row, startCol, `${dimC}${actLine}${RESET}`);
     } else {
-      const defaultActs = '  [/]filter [s]sort [space]select [enter]detail';
+      const da = pane.getDefaultAction();
+      const enterHint = da ? `[enter]${da}` : '[enter]detail';
+      const defaultActs = `  [/]filter [s]sort [space]select ${enterHint} [esc]back`;
       this.screen.writeAt(row, startCol, `${dimC}${defaultActs.slice(0, maxWidth)}${RESET}`);
     }
   }
@@ -396,6 +398,6 @@ export class TuiConfigPainter {
       }
     }
     row++;
-    writeLine('  ↑↓:navigate │ enter:edit │ esc:back', dimC);
+    writeLine('  ↑↓:navigate  ←→:change  enter:text-edit  esc:back', dimC);
   }
 }
