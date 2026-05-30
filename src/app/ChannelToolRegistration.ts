@@ -9,7 +9,7 @@ import { logInfo, logError } from '../core/index.js';
 import { getArmaPath, getChannelRoot } from './ChannelPaths.js';
 import { getPermissionStore } from './PermissionStore.js';
 import { join } from 'path';
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import type { ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
 
 /** Persist worker session state to its sandbox dir before cleanup. */
@@ -25,6 +25,15 @@ function persistWorkerState(workerId: string, chName: string, agents: Map<string
   } catch (e) {
     logError('a2a', `Failed to persist worker state for ${workerId}: ${e instanceof Error ? e.message : String(e)}`);
   }
+}
+
+/** Delete a worker's sandbox directory. Idempotent — safe to call multiple times. */
+function cleanupWorkerSandbox(workerId: string, chName: string): void {
+  try {
+    const armaPath = getArmaPath(chName);
+    const workerSandbox = join(armaPath, 'workers', workerId);
+    rmSync(workerSandbox, { recursive: true, force: true });
+  } catch { /* already cleaned up or doesn't exist */ }
 }
 
 /**
@@ -157,6 +166,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       if (t) { clearInterval(t); workerUiTimers.delete(workerId); }
       persistWorkerState(workerId, chName, channelAgents);
       channelAgents.delete(workerId);
+      cleanupWorkerSandbox(workerId, chName);
       setTimeout(() => deps.callbacks.removeChannelChild(chName, workerId), 3000);
     },
     onWorkerProgress: (workerId: string, progress: string, _percent?: number) => {
@@ -212,6 +222,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       persistWorkerState(workerId, chName, channelAgents);
 
       channelAgents.delete(workerId);
+      cleanupWorkerSandbox(workerId, chName);
       setTimeout(() => deps.callbacks.removeChannelChild(chName, workerId), 5000);
     },
     onWorkerError: (workerId: string, error: string) => {
@@ -242,6 +253,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
 
       persistWorkerState(workerId, chName, channelAgents);
       channelAgents.delete(workerId);
+      cleanupWorkerSandbox(workerId, chName);
       setTimeout(() => deps.callbacks.removeChannelChild(chName, workerId), 5000);
     },
     getParentAgent: (_workerId: string) => {
