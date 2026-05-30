@@ -662,6 +662,7 @@ export class ChannelLifecycle {
       }
       this.channelAgents.set(channelName, agent);
       this.deps.refreshProviderStats();
+      this.persistChannelState(channelName);
       this.deps.callbacks.writeMessage('system', '*', `Switched to ${provConfig.name ?? provConfig.type}/${newModel}`, channelName);
       this.deps.callbacks.writeMessage('system', 'conn',
         `${channelName} model switch → ${provConfig.name ?? provConfig.type}/${newModel}`, '#logs');
