@@ -5,6 +5,7 @@ import type { IChannelManifestEntry, IChannelStateFile } from '../session/index.
 import { ChannelThreadHandle, type ChannelThreadConfig } from '../threads/index.js';
 import { createChannelAgentWithTools } from './ChannelToolRegistration.js';
 import { NudgeManager } from './NudgeManager.js';
+import { AutoWorkerManager } from './AutoWorkerManager.js';
 import type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
 import { UserConfig } from '../config/index.js';
 import { stripAllAnsi } from '../core/stripAnsi.js';
@@ -42,8 +43,19 @@ export class ChannelLifecycle {
     return (UserConfig.instance().settings.session.historyScribeTimeout || 15) * 60 * 1000;
   }
 
+  /** Per-channel auto-worker manager (refactor, jsdoc, test-builder, etc.). */
+  private _autoWorkerManager: AutoWorkerManager;
+
   constructor(deps: ChannelLifecycleDeps) {
     this.deps = deps;
+    this._autoWorkerManager = new AutoWorkerManager({
+      getChannelAgent: (ch) => this.channelAgents.get(ch),
+      getRuntime: (ch) => this.channelRuntimes.get(ch),
+      getChannelMessages: (ch) => this.deps.callbacks.getChannelMessages(ch),
+      callbacks: this.deps.callbacks,
+      getChannelRoot,
+      getArmaPath,
+    });
     this._startScribeTimers();
     // Listen for live scribe config changes to restart interval timer
     try {
@@ -184,6 +196,9 @@ export class ChannelLifecycle {
     const result = await runtime.spawnWorker(workerId, task, scribeModel, undefined, undefined, stickyNotes, true);
     if (!result.success) return;
   }
+
+  /** Public accessor for the AutoWorkerManager. */
+  getAutoWorkerManager(): AutoWorkerManager { return this._autoWorkerManager; }
 
   /** Public accessor for the NudgeManager (used by /nudge REPL command via CommandContext). */
   getNudgeManager(): NudgeManager { return this._nudgeManager; }
@@ -365,6 +380,23 @@ export class ChannelLifecycle {
         copyFileSync(scribeTemplate, scribePath);
       }
     }
+
+    // Seed auto-worker prompt templates from core-auto-worker-*.md files
+    // Any file matching core-auto-worker-{type}.md in armaDataDir() becomes
+    // a seedable auto-worker type. Add new workers by creating core templates.
+    try {
+      const coreDir = armaDataDir();
+      const coreFiles = readdirSync(coreDir).filter(f => f.startsWith('core-auto-worker-') && f.endsWith('.md'));
+      for (const cf of coreFiles) {
+        const type = cf.replace('core-auto-worker-', '').replace(/\.md$/, '');
+        const targetPath = join(armaPath, `auto-worker-${type}.md`);
+        if (!existsSync(targetPath)) {
+          copyFileSync(join(coreDir, cf), targetPath);
+        }
+      }
+    } catch {
+      // Best-effort
+    }
   }
 
   /** Read and format the channel's notes for injection into agent context. */
@@ -448,6 +480,7 @@ export class ChannelLifecycle {
       this.channels.forEach(c => c.active = false);
       existing.active = true;
       this.deps.callbacks.setActiveChannel(name);
+      this._autoWorkerManager.startChannel(name);
       this._notifyChannelsUpdated();
       return name;
     }
@@ -466,6 +499,7 @@ export class ChannelLifecycle {
 
     this._spawnChannelAgent(chName, defaultProvider, defaultModel,
       () => {
+        this._autoWorkerManager.startChannel(chName);
         this._setupChannelNudges(chName);
         this.deps.refreshProviderStats();
         const agent = this.channelAgents.get(chName);
@@ -504,7 +538,10 @@ export class ChannelLifecycle {
     const defaultModel = uc.defaultModel || this.deps.config.defaultModel;
 
     this._spawnChannelAgent(chName, defaultProvider, defaultModel,
-      () => { this.deps.refreshProviderStats(); },
+      () => {
+        this._autoWorkerManager.startChannel(chName);
+        this.deps.refreshProviderStats();
+      },
       () => {},
     );
 
@@ -549,6 +586,7 @@ export class ChannelLifecycle {
     this._nudgeManager.unregisterStore(name);
     this._recurringPrompts.get(name)?.stop();
     this._recurringPrompts.delete(name);
+    this._autoWorkerManager.stopChannel(name);
 
     const runtime = this.channelRuntimes.get(name);
     if (runtime) {

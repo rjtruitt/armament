@@ -68,6 +68,7 @@ const COMMANDS: CommandEntry[] = [
   { name: 'fallback', description: 'Configure model fallback chain', usage: '/fallback [models...]', category: 'config' },
   { name: 'font', description: 'Change UI font size', usage: '/font bigger|smaller|reset', category: 'config' },
   { name: 'channel_config', description: 'Open channel config menu', usage: '/channel_config', category: 'config' },
+  { name: 'auto', description: 'Manage auto-workers for this channel', usage: '/auto [list|enable|disable|interval|model] [type] [value]', category: 'config' },
 ];
 /** Get deduplicated list of unique command names with / prefix. */
 export function getCommandNames(): string[] {
