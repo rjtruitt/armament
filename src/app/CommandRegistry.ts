@@ -69,10 +69,6 @@ const COMMANDS: CommandEntry[] = [
   { name: 'font', description: 'Change UI font size', usage: '/font bigger|smaller|reset', category: 'config' },
   { name: 'channel_config', description: 'Open channel config menu', usage: '/channel_config', category: 'config' },
 ];
-/** Get all registered command entries. */
-export function getAllCommands(): CommandEntry[] {
-  return COMMANDS;
-}
 /** Get deduplicated list of unique command names with / prefix. */
 export function getCommandNames(): string[] {
   return [...new Set(COMMANDS.map(c => `/${c.name.split(' ')[0]}`))];
