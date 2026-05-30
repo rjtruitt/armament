@@ -214,23 +214,9 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
     case 'enter': {
       const item = allItems[ctx.state.detailCursor];
       if (!item) return true;
-      if (item.type === 'toggle') {
-        const f = item as DetailField;
-        f.value = !f.value;
-        if (activeRow && f.key) activeRow.cells[f.key] = f.value ? 'on' : 'off';
-        ctx.markDirty();
-        emitChange(ctx, f.key, f.value, activeRow);
-        return true;
-      }
-      if (item.type === 'choice') {
-        const f = item as DetailField;
-        if (f.choices && f.choices.length > 0) {
-          const idx = f.choices.findIndex(c => c.id === f.value);
-          f.value = f.choices[(idx + 1) % f.choices.length].id;
-          if (activeRow && f.key) activeRow.cells[f.key] = f.value;
-          ctx.markDirty();
-          emitChange(ctx, f.key, f.value, activeRow);
-        }
+      if (item.type === 'toggle' || item.type === 'choice') {
+        // Toggle/choice use arrow keys only. Enter is a no-op to avoid
+        // the confusing "some things change on Enter, others on arrows" UX.
         return true;
       }
       if (item.type === 'text') {

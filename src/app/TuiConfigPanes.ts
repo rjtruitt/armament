@@ -28,6 +28,8 @@ export interface ConfigPanesDelegate {
  * Tui config panes class.
  */
 export class TuiConfigPanes {
+  /** Known provider types for the 'add provider' type picker. */
+  private static KNOWN_PROVIDER_TYPES = ['bedrock', 'anthropic', 'openai', 'gemini', 'ollama', 'openrouter', 'replicate'] as const;
   private _configPanes: Map<string, ConfigPane> = new Map();
   /** Shared panel definitions map for all ConfigPane instances. */
   private _panels: Map<string, MenuPanel> = new Map();
@@ -52,7 +54,7 @@ export class TuiConfigPanes {
         pane.navigateToSubPanel(parentId, paneId);
       }
       // Register per-provider models schema dynamically on navigation
-      const modelsMatch = paneId.match(/^providers\.(\w+)\.models$/);
+      const modelsMatch = paneId.match(/^providers\.([^.]+)\.models$/);
       if (modelsMatch) {
         this.registerProviderModelSchemas(pane, modelsMatch[1]);
       }
@@ -63,7 +65,7 @@ export class TuiConfigPanes {
     if (!pane) {
       pane = new ConfigPane(this._panels, paneId);
       // Per-provider models sub-panel
-      const modelsMatch = paneId.match(/^providers\.(\w+)\.models$/);
+      const modelsMatch = paneId.match(/^providers\.([^.]+)\.models$/);
       if (modelsMatch) {
         this.registerProviderModelSchemas(pane, modelsMatch[1]);
       } else {
@@ -73,166 +75,7 @@ export class TuiConfigPanes {
         this.handlePaneConfigChange(paneId, path, value);
       };
       pane.onAction = (action, rowId, panelId) => {
-        if (panelId === 'providers') {
-          const cfg = UserConfig.instance();
-          if (action === 'a') {
-            const knownTypes = ['bedrock', 'anthropic', 'openai', 'gemini', 'ollama', 'openrouter', 'replicate'];
-            // Register the type picker panel
-            this._panels.set('providers.new', {
-              id: 'providers.new',
-              title: 'New Provider',
-              items: knownTypes.map(t => ({
-                id: `providers.new.${t}`,
-                label: t,
-                type: 'submenu' as const,
-              })),
-            });
-            // Clean up any stale type-specific form panels
-            for (const [key] of this._panels) {
-              if (key.startsWith('providers.new.') && key !== 'providers.new') this._panels.delete(key);
-            }
-            // Push the type picker onto the panel stack and intercept navigation
-            pane!.pushPanel('providers.new');
-            const prevNavigate = pane!.onNavigate;
-            pane!.onNavigate = (target: string) => {
-              const match = target.match(/^providers\.new\.(\w+)$/);
-              if (match) {
-                const type = match[1] as IProviderConfig['type'];
-                if (!knownTypes.includes(type)) return;
-                const existingNames = cfg.providers.map(p => p.name ?? p.type);
-                let newName: string = type;
-                let suffix = 2;
-                while (existingNames.includes(newName)) {
-                  newName = `${type}-${suffix++}`;
-                }
-                const newProvider: IProviderConfig = { type, name: newName, models: [] };
-                const providers = [...cfg.providers, newProvider];
-                cfg.set('providers', providers);
-                this.refreshSchemas('providers');
-                pane!.resetPanelStack('providers');
-                const providerRows = pane!.filteredRows;
-                const newIdx = providerRows.findIndex((r: any) => r.id === newName);
-                pane!.setCursor(newIdx >= 0 ? newIdx : 0);
-                pane!.onNavigate = prevNavigate;
-                pane!.openDetail();
-                this.delegate.render();
-                return;
-              }
-              prevNavigate?.(target);
-            };
-            this.delegate.render();
-          } else if (action === 'd') {
-            const providers = cfg.providers.filter(p => (p.name ?? p.type) !== rowId);
-            cfg.set('providers', providers);
-            if (cfg.defaultProvider === rowId) cfg.set('defaultProvider', '' as any);
-            if (cfg.defaultModel && providers.every(p => !(p.models || []).some(m => (typeof m === 'string' ? m : m.name) === cfg.defaultModel!))) {
-              cfg.set('defaultModel', '' as any);
-              cfg.set('model', '');
-            }
-            this.refreshSchemas('providers');
-            this.delegate.render();
-          } else if (action === 'm') {
-            this.delegate.setActiveChannel(`@providers.${rowId}.models`);
-            this.delegate.render();
-          }
-        } else if (panelId.match(/^providers\.\w+\.models$/)) {
-          const cfg = UserConfig.instance();
-          const panelMatch = panelId.match(/^providers\.(\w+)\.models$/);
-          const providerType = panelMatch![1];
-          if (action === 'a') {
-            // Add a placeholder model and open the detail view so user can name it
-            const baseName = 'new-model';
-            const existing = (cfg.providers.find(p => (p.name ?? p.type) === providerType)?.models ?? []);
-            const newModelName = existing.some(m => (typeof m === 'string' ? m : m.name) === baseName) ? `${baseName}-${existing.length + 1}` : baseName;
-            const providers = cfg.providers.map(p => {
-              if ((p.name ?? p.type) === providerType) {
-                const updated = { ...p, models: [...(p.models || []), { name: newModelName }] };
-                // Auto-populate summaryModel if blank
-                if (!updated.webpageSummarizationModel) updated.webpageSummarizationModel = newModelName;
-                return updated;
-              }
-              return p;
-            });
-            cfg.set('providers', providers);
-            if (!cfg.defaultModel) {
-              cfg.set('defaultModel', newModelName);
-              cfg.set('defaultProvider', providerType);
-            }
-            this.refreshSchemas('providers');
-            this.refreshSchemas(panelId);
-            // Auto-open detail view on the new model
-            const modelPane = this._configPanes.get(panelId);
-            if (modelPane) {
-              const rows = modelPane.filteredRows;
-              const fullId = `${providerType}-${newModelName}`;
-              const newIdx = rows.findIndex((r: any) => r.id === fullId);
-              if (newIdx >= 0) {
-                modelPane.setCursor(newIdx);
-                modelPane.openDetail();
-              }
-            }
-            this.delegate.render();
-          } else if (action === 'd') {
-            if (rowId !== 'none') {
-              const dashIdx = rowId.indexOf('-');
-              const modelId = dashIdx > 0 ? rowId.slice(dashIdx + 1) : rowId;
-              const providers = cfg.providers.map(p => {
-                if ((p.name ?? p.type) === providerType) {
-                  return { ...p, models: (p.models || []).filter(m => (typeof m === 'string' ? m : m.name) !== modelId) };
-                }
-                return p;
-              });
-              cfg.set('providers', providers);
-              if (cfg.defaultModel === modelId) {
-                cfg.set('defaultModel', '');
-                cfg.set('defaultProvider', '');
-              }
-              this.refreshSchemas('providers');
-              this.refreshSchemas(panelId);
-              this.delegate.render();
-            }
-          }
-        } else if (panelId === 'mcp' && action === 'a') {
-          // Add a new MCP server entry and open the detail view for inline editing
-          const existing = this.opts.menuConfig?.mcpConfigs ?? [];
-          let idx = 1;
-          let name = 'new-server';
-          while (existing.some(c => c.name === name)) { idx++; name = `new-server-${idx}`; }
-          const newEntry = { name, config: { transport: 'stdio', command: 'npx', args: [], env: {}, timeout: 60 } };
-          const updated = [...existing, newEntry];
-          if (this.opts.menuConfig) this.opts.menuConfig.mcpConfigs = updated;
-          // Write to disk so onMcpConfigChange can find it on subsequent edits
-          if (!UserConfig.instance().getNoPersist()) {
-            Promise.all([import('node:fs'), import('node:path'), import('node:os')]).then(([fs, path, os]) => {
-              const file = path.join(os.homedir(), '.arma', 'mcp.json');
-              fs.writeFileSync(file, JSON.stringify(updated, null, 2), 'utf8');
-            }).catch(() => {});
-          }
-          this.refreshSchemas('mcp');
-          this.delegate.render();
-          // Open detail view on the new row
-          const mcpPane = this._configPanes.get('mcp');
-          if (mcpPane) {
-            const newIdx = mcpPane.filteredRows.findIndex((r: any) => r.id === name);
-            if (newIdx >= 0) {
-              mcpPane.setCursor(newIdx);
-              mcpPane.openDetail();
-              this.delegate.render();
-            }
-          }
-        } else if (panelId === 'mcp' && action === 'd' && rowId && rowId !== 'none') {
-          // Remove from in-memory cache immediately so refreshSchemas sees the update
-          if (this.opts.menuConfig) {
-            this.opts.menuConfig.mcpConfigs = (this.opts.menuConfig.mcpConfigs ?? []).filter(c => c.name !== rowId);
-          }
-          if (this.opts.onMcpRemove) this.opts.onMcpRemove(rowId);
-          this.refreshSchemas('mcp');
-          this.delegate.render();
-        } else if (panelId === 'mcp' && action === 'r' && rowId && rowId !== 'none') {
-          this.opts.onSubmit(`/mcp restart ${rowId}`).catch(() => {});
-        } else if (panelId === 'scheduler.workflows' && action === 'r') {
-          this.opts.onSubmit(`/flow run ${rowId}`).catch(() => {});
-        }
+        this._handleProviderAction(action, rowId, panelId);
       };
       this._configPanes.set(paneId, pane);
     }
@@ -245,7 +88,7 @@ export class TuiConfigPanes {
     const modelRows = (provider?.models ?? []).map(m => {
       const mName = typeof m === 'string' ? m : m.name;
       return {
-      id: `${providerKey}-${mName}`,
+      id: mName,
       status: 'active' as const,
       cells: {
         name: mName,
@@ -367,14 +210,13 @@ export class TuiConfigPanes {
     }
 
     // Model detail field edits (per-provider models list)
-    const providerModelMatch = path.match(/^providers\.(\w+)\.models\.(.+)\.(.+)$/);
+    const providerModelMatch = path.match(/^providers\.([^.]+)\.models\.(.+)\.(.+)$/);
     if (providerModelMatch) {
       const rowId = providerModelMatch[2];
       const fieldKey = providerModelMatch[3];
       if (rowId && fieldKey) {
-        const dashIdx = rowId.indexOf('-');
         const providerType = providerModelMatch[1];
-        const modelId = dashIdx > 0 ? rowId.slice(dashIdx + 1) : rowId;
+        const modelId = rowId;
         if (providerType) {
           let coerced: any = value;
           if (value === 'on') coerced = true;
@@ -581,6 +423,194 @@ export class TuiConfigPanes {
     }
     if (cfgPath === 'display.renderInterval') {
       this.delegate.setRenderInterval(typeof value === 'number' ? value : Number(value) || 16);
+    }
+  }
+
+  /** Handle panel-level actions (add, delete, navigate to models). */
+  private _handleProviderAction(action: string, rowId: string, panelId: string): void {
+    if (panelId === 'providers') {
+      this._handleProvidersListAction(action, rowId);
+    } else if (panelId.match(/^providers\.[^.]+\.models$/)) {
+      this._handleProvidersModelsAction(action, rowId, panelId);
+    } else if (panelId === 'mcp') {
+      this._handleMcpAction(action, rowId);
+    } else if (panelId === 'scheduler.workflows' && action === 'r') {
+      this.opts.onSubmit(`/flow run ${rowId}`).catch(() => {});
+    }
+  }
+
+  /** Handle actions on the providers list (add, delete, navigate to models). */
+  private _handleProvidersListAction(action: string, rowId: string): void {
+    const cfg = UserConfig.instance();
+
+    if (action === 'a') {
+      this._showProviderTypePicker();
+    } else if (action === 'd') {
+      const providers = cfg.providers.filter(p => (p.name ?? p.type) !== rowId);
+      cfg.set('providers', providers);
+      if (cfg.defaultProvider === rowId) cfg.set('defaultProvider', '' as any);
+      if (cfg.defaultModel && providers.every(p => !(p.models || []).some(m => (typeof m === 'string' ? m : m.name) === cfg.defaultModel!))) {
+        cfg.set('defaultModel', '' as any);
+        cfg.set('model', '');
+      }
+      this.refreshSchemas('providers');
+      this.delegate.render();
+    } else if (action === 'm') {
+      this.delegate.setActiveChannel(`@providers.${rowId}.models`);
+      this.delegate.render();
+    }
+  }
+
+  /** Show the provider type picker panel. */
+  private _showProviderTypePicker(): void {
+    const cfg = UserConfig.instance();
+    const pane = this._configPanes.get('providers');
+    if (!pane) return;
+    const knownTypes = TuiConfigPanes.KNOWN_PROVIDER_TYPES as readonly string[];
+
+    this._panels.set('providers.new', {
+      id: 'providers.new',
+      title: 'New Provider',
+      items: knownTypes.map(t => ({
+        id: `providers.new.${t}`,
+        label: t,
+        type: 'submenu' as const,
+      })),
+    });
+    // Clean up stale type-specific form panels
+    for (const [key] of this._panels) {
+      if (key.startsWith('providers.new.') && key !== 'providers.new') this._panels.delete(key);
+    }
+    pane.pushPanel('providers.new');
+    const prevNavigate = pane.onNavigate;
+    pane.onNavigate = (target: string) => {
+      const match = target.match(/^providers\.new\.([^.]+)$/);
+      if (match) {
+        const type = match[1];
+        if (!knownTypes.includes(type)) return;
+        const existingNames = cfg.providers.map(p => p.name ?? p.type);
+        let newName: string = type;
+        let suffix = 2;
+        while (existingNames.includes(newName)) {
+          newName = `${type}-${suffix++}`;
+        }
+        const newProvider: any = { type, name: newName, models: [] };
+        const providers = [...cfg.providers, newProvider];
+        cfg.set('providers', providers);
+        this.refreshSchemas('providers');
+        pane.resetPanelStack('providers');
+        const providerRows = pane.filteredRows;
+        const newIdx = providerRows.findIndex((r: any) => r.id === newName);
+        pane.setCursor(newIdx >= 0 ? newIdx : 0);
+        pane.onNavigate = prevNavigate;
+        pane.openDetail();
+        this.delegate.render();
+        return;
+      }
+      prevNavigate?.(target);
+    };
+    this.delegate.render();
+  }
+
+  /** Handle actions on the per-provider models panel (add, delete). */
+  private _handleProvidersModelsAction(action: string, rowId: string, panelId: string): void {
+    const cfg = UserConfig.instance();
+    const panelMatch = panelId.match(/^providers\.([^.]+)\.models$/);
+    const providerType = panelMatch![1];
+
+    if (action === 'a') {
+      this._addModelToProvider(providerType, panelId);
+    } else if (action === 'd' && rowId && rowId !== 'none') {
+      const providers = cfg.providers.map(p => {
+        if ((p.name ?? p.type) === providerType) {
+          return { ...p, models: (p.models || []).filter(m => (typeof m === 'string' ? m : m.name) !== rowId) };
+        }
+        return p;
+      });
+      cfg.set('providers', providers);
+      if (cfg.defaultModel === rowId) {
+        cfg.set('defaultModel', '');
+        cfg.set('defaultProvider', '');
+      }
+      this.refreshSchemas('providers');
+      this.refreshSchemas(panelId);
+      this.delegate.render();
+    }
+  }
+
+  /** Add a placeholder model to the provider and auto-open its detail view. */
+  private _addModelToProvider(providerType: string, panelId: string): void {
+    const cfg = UserConfig.instance();
+    const baseName = 'new-model';
+    const existing = (cfg.providers.find(p => (p.name ?? p.type) === providerType)?.models ?? []);
+    const newModelName = existing.some(m => (typeof m === 'string' ? m : m.name) === baseName)
+      ? `${baseName}-${existing.length + 1}` : baseName;
+
+    const providers = cfg.providers.map(p => {
+      if ((p.name ?? p.type) === providerType) {
+        const updated = { ...p, models: [...(p.models || []), { name: newModelName }] };
+        if (!updated.webpageSummarizationModel) updated.webpageSummarizationModel = newModelName;
+        return updated;
+      }
+      return p;
+    });
+    cfg.set('providers', providers);
+    if (!cfg.defaultModel) {
+      cfg.set('defaultModel', newModelName);
+      cfg.set('defaultProvider', providerType);
+    }
+    this.refreshSchemas('providers');
+    this.refreshSchemas(panelId);
+
+    const modelPane = this._configPanes.get(panelId);
+    if (modelPane) {
+      const newIdx = modelPane.filteredRows.findIndex((r: any) => r.id === newModelName);
+      if (newIdx >= 0) {
+        modelPane.setCursor(newIdx);
+        modelPane.openDetail();
+      }
+    }
+    this.delegate.render();
+  }
+
+  /** Handle actions on the MCP panel (add, delete, restart). */
+  private _handleMcpAction(action: string, rowId: string): void {
+    if (action === 'a') {
+      const existing = this.opts.menuConfig?.mcpConfigs ?? [];
+      let idx = 1;
+      let name = 'new-server';
+      while (existing.some(c => c.name === name)) { idx++; name = `new-server-${idx}`; }
+      const newEntry = { name, config: { transport: 'stdio', command: 'npx', args: [] as string[], env: {} as Record<string, string>, timeout: 60 } };
+      const updated = [...existing, newEntry];
+      if (this.opts.menuConfig) this.opts.menuConfig.mcpConfigs = updated;
+
+      if (!UserConfig.instance().getNoPersist()) {
+        Promise.all([import('node:fs'), import('node:path'), import('node:os')]).then(([fs, path, os]) => {
+          const file = path.join(os.homedir(), '.arma', 'mcp.json');
+          fs.writeFileSync(file, JSON.stringify(updated, null, 2), 'utf8');
+        }).catch(() => {});
+      }
+      this.refreshSchemas('mcp');
+      this.delegate.render();
+
+      const mcpPane = this._configPanes.get('mcp');
+      if (mcpPane) {
+        const newIdx = mcpPane.filteredRows.findIndex((r: any) => r.id === name);
+        if (newIdx >= 0) {
+          mcpPane.setCursor(newIdx);
+          mcpPane.openDetail();
+          this.delegate.render();
+        }
+      }
+    } else if (action === 'd' && rowId && rowId !== 'none') {
+      if (this.opts.menuConfig) {
+        this.opts.menuConfig.mcpConfigs = (this.opts.menuConfig.mcpConfigs ?? []).filter(c => c.name !== rowId);
+      }
+      if (this.opts.onMcpRemove) this.opts.onMcpRemove(rowId);
+      this.refreshSchemas('mcp');
+      this.delegate.render();
+    } else if (action === 'r' && rowId && rowId !== 'none') {
+      this.opts.onSubmit(`/mcp restart ${rowId}`).catch(() => {});
     }
   }
 }
