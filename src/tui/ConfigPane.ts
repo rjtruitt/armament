@@ -5,7 +5,25 @@
  * and bulk actions.
  */
 
-import type { MenuItem, MenuPanel } from './session-menu/types.js';
+/** A menu item for panel-based navigation (config submenus, etc.). */
+export interface MenuItem {
+  id: string;
+  label?: string;
+  type?: 'submenu' | 'toggle' | 'choice' | 'text' | 'action' | 'display' | 'json';
+  value?: any;
+  hidden?: boolean;
+  readonly?: boolean;
+  description?: string;
+  choices?: Array<{ id: string; label: string }>;
+}
+
+/** A navigation panel containing menu items. */
+export interface MenuPanel {
+  id: string;
+  title?: string;
+  items: MenuItem[];
+}
+
 import {
   handleListKey,
   handleDetailKey,

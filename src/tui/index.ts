@@ -106,17 +106,6 @@ export {
   type SchemaTarget,
 } from './ConfigSchema.js';
 
-export {
-  SessionMenu,
-  type ProviderInfo,
-  type SessionMenuConfig,
-  type McpServerConfig,
-  type SessionMenuOptions,
-  type MenuItemType,
-  type MenuItem,
-  type MenuPanel,
-} from './SessionMenu.js';
-
 export { renderMarkdown } from './MarkdownRenderer.js';
 
 export { LoadingAnimator, type AnimationSpeed } from './LoadingAnimator.js';

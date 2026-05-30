@@ -96,7 +96,7 @@ export class TuiConfigPainter {
             const fullLine = `${bg}${accentC}${pointer}${RESET}${bg} ${labelC}${item.label}  ${stateColor}${state}${resetBg}`;
             this.screen.writeAt(row, startCol, fullLine);
             if (item.description) {
-              const descCol = startCol + 4 + item.label.length + state.length + 2;
+              const descCol = startCol + 4 + (item.label ?? '').length + state.length + 2;
               if (descCol < startCol + maxWidth - item.description.length) {
                 this.screen.writeAt(row, descCol, `${dimC}${item.description}${RESET}`);
               }

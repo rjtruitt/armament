@@ -30,19 +30,6 @@ export class ChannelLifecycle {
   private _nudgeManager = new NudgeManager();
   /** Per-channel recurring prompts (reads .armaws/reminder_prompt.md). */
   private _recurringPrompts = new Map<string, ScheduledPrompt>();
-  /** Last time each channel's agent went idle (used for HistoryScribe scheduling). */
-  private _lastScribeTime = new Map<string, number>();
-  /** Per-channel scribe suppression timestamp — scribe blocked until after this time. */
-  private _scribeSuppressedUntil = new Map<string, number>();
-  /** Interval handle for periodic idle checks (30s poll). */
-  private _scribeCheckInterval: ReturnType<typeof setInterval> | null = null;
-  /** Interval handle for timer-based scribe (optional, off by default). */
-  private _scribeIntervalTimer: ReturnType<typeof setInterval> | null = null;
-  /** Get the scribe idle timeout in ms from config. */
-  private _scribeDelay(): number {
-    return (UserConfig.instance().settings.session.historyScribeTimeout || 15) * 60 * 1000;
-  }
-
   /** Per-channel auto-worker manager (refactor, jsdoc, test-builder, etc.). */
   private _autoWorkerManager: AutoWorkerManager;
 
@@ -56,145 +43,14 @@ export class ChannelLifecycle {
       getChannelRoot,
       getArmaPath,
     });
-    this._startScribeTimers();
-    // Listen for live scribe config changes to restart interval timer
+    // Listen for recurring prompt config changes
     try {
       getGlobalEventBus().on((event: any) => {
-        if (event && event.type === 'scribe:config-changed') {
-          this._updateScribeIntervalTimer();
-        }
         if (event && event.type === 'recurring-prompt:config-changed') {
           this._reloadRecurringPrompts();
         }
       });
     } catch {}
-  }
-
-  /** Start scribe timers: idle poll (always) + optional interval scribe. */
-  private _startScribeTimers(): void {
-    if (!this._scribeCheckInterval) {
-      this._scribeCheckInterval = setInterval(() => this._checkScribeEligibility(), 30_000);
-    }
-    this._updateScribeIntervalTimer();
-  }
-
-  /** Start or stop the optional interval-based scribe timer based on config. */
-  private _updateScribeIntervalTimer(): void {
-    if (this._scribeIntervalTimer) {
-      clearInterval(this._scribeIntervalTimer);
-      this._scribeIntervalTimer = null;
-    }
-    const settings = UserConfig.instance().settings.session;
-    if (settings.historyScribeEnabled && settings.scribeIntervalEnabled) {
-      const intervalMs = (settings.scribeIntervalMinutes || 60) * 60 * 1000;
-      this._scribeIntervalTimer = setInterval(() => {
-        for (const [chName, agent] of this.channelAgents) {
-          if (!chName.startsWith('#') || chName.startsWith('worker-')) continue;
-          if (agent.status === 'idle') {
-            // Skip if scribe is suppressed for this channel
-            const suppressedUntil = this._scribeSuppressedUntil.get(chName);
-            if (suppressedUntil && Date.now() < suppressedUntil) continue;
-            this._spawnHistoryScribeWorker(chName).catch(() => {});
-          }
-        }
-      }, intervalMs);
-    }
-  }
-
-  /** Stop all scribe timers. */
-  private _stopScribeTimers(): void {
-    if (this._scribeCheckInterval) {
-      clearInterval(this._scribeCheckInterval);
-      this._scribeCheckInterval = null;
-    }
-    if (this._scribeIntervalTimer) {
-      clearInterval(this._scribeIntervalTimer);
-      this._scribeIntervalTimer = null;
-    }
-  }
-
-  /** Check all channels for idle-based scribe eligibility. */
-  private _checkScribeEligibility(): void {
-    const settings = UserConfig.instance().settings.session;
-    if (!settings.historyScribeEnabled || !settings.scribeOnIdle) return;
-    const delay = this._scribeDelay();
-    for (const [chName, agent] of this.channelAgents) {
-      if (!chName.startsWith('#') || chName.startsWith('worker-')) continue;
-      if (agent.status === 'idle') {
-        // If scribe is suppressed (another scribe recently fired), skip
-        const suppressedUntil = this._scribeSuppressedUntil.get(chName);
-        if (suppressedUntil && Date.now() < suppressedUntil) continue;
-
-        const lastIdle = this._lastScribeTime.get(chName);
-        if (!lastIdle) {
-          this._lastScribeTime.set(chName, Date.now());
-        } else if (Date.now() - lastIdle >= delay) {
-          this._lastScribeTime.delete(chName);
-          // Suppress further scribe until channel goes active again
-          this._scribeSuppressedUntil.set(chName, Infinity);
-          this._spawnHistoryScribeWorker(chName).catch(() => {});
-        }
-      } else {
-        // Agent is busy — clear scribe suppression + idle tracking so timers restart
-        this._scribeSuppressedUntil.delete(chName);
-        this._lastScribeTime.delete(chName);
-      }
-    }
-  }
-
-  /** Spawn a background scribe worker for an idle channel. */
-  private async _spawnHistoryScribeWorker(chName: string): Promise<void> {
-    const runtime = this.channelRuntimes.get(chName);
-    if (!runtime) return;
-
-    const armaPath = getArmaPath(chName);
-    const scribePath = join(armaPath, 'history-scribe.md');
-    if (!existsSync(scribePath)) return;
-
-    // Don't spawn if user sent a message in the last minute
-    const lastIdle = this._lastScribeTime.get(chName);
-    if (lastIdle && Date.now() - lastIdle < 60_000) return;
-
-    const template = readFileSync(scribePath, 'utf-8');
-    const parentRoot = getChannelRoot(chName);
-    const workerId = `historyscribe-${chName.slice(1)}-${Date.now()}`;
-
-    // Build channel context string — just the recent messages
-    const rawMax = UserConfig.instance().settings.session.historyScribeMaxMessages;
-    const maxMessages = (rawMax === 0 || rawMax === undefined || rawMax === null) ? undefined : rawMax;
-    const messages = this.deps.callbacks.getChannelMessages(chName) ?? [];
-    const messageText = messages
-      .filter((m: any) => m.content && typeof m.content === 'string')
-      .slice(maxMessages ? -maxMessages : undefined)
-      .map((m: any) => `[${m.type}] ${m.sender}: ${m.content}`)
-      .join('\\n');
-
-    const task = template
-      .replace(/\{parent-channel\}/g, chName)
-      .replace(/\{parent-workspace\}/g, parentRoot)
-      .replace(/\{notes-path\}/g, join(armaPath, 'notes.md'))
-      .replace(/\{arch-path\}/g, join(armaPath, 'architecture'))
-      .replace(/\{recent-messages\}/g, messageText || '(no recent messages)');
-
-    // Note: no seedMessages — context is in the prompt itself so the worker
-    // doesn't see a transparently faked conversation.
-
-    // Sticky note with explicit paths to the parent channel's real files
-    const stickyNotes = [
-      { content: `📁 Parent channel: ${chName}`, position: 'top' as const },
-      { content: `📝 notes.md: ${join(armaPath, 'notes.md')}`, position: 'top' as const },
-      { content: `📂 architecture/: ${join(armaPath, 'architecture')}`, position: 'top' as const },
-    ];
-
-    // Resolve scribe model from config (format: "provider:model" or just "model", empty = default)
-    const scribeModelSetting = UserConfig.instance().settings.session.historyScribeModel;
-    let scribeModel: string | undefined;
-    if (scribeModelSetting) {
-      scribeModel = scribeModelSetting.includes(':') ? scribeModelSetting.split(':')[1] : scribeModelSetting;
-    }
-
-    const result = await runtime.spawnWorker(workerId, task, scribeModel, undefined, undefined, stickyNotes, true);
-    if (!result.success) return;
   }
 
   /** Public accessor for the AutoWorkerManager. */
@@ -370,15 +226,6 @@ export class ChannelLifecycle {
         '  - Check for any new drift in the architecture docs and update them.',
         '  - Review recent changes and suggest improvements.',
       ].join('\n'), 'utf-8');
-    }
-
-    // Seed history-scribe.md if it doesn't exist
-    const scribePath = join(armaPath, 'history-scribe.md');
-    if (!existsSync(scribePath)) {
-      const scribeTemplate = join(armaDataDir(), 'core-history-scribe.md');
-      if (existsSync(scribeTemplate)) {
-        copyFileSync(scribeTemplate, scribePath);
-      }
     }
 
     // Seed auto-worker prompt templates from core-auto-worker-*.md files
@@ -650,14 +497,6 @@ export class ChannelLifecycle {
         role: 'system',
         content: `[Rolling dropoff — dropped ${drop} oldest messages to 4500]`,
       } as any);
-      // Fire HistoryScribe on prune if enabled and agent is idle
-      const settings = UserConfig.instance().settings.session;
-      if (settings.historyScribeEnabled && settings.scribeOnPrune && agent.status === 'idle') {
-        const suppressedUntil = this._scribeSuppressedUntil.get(channelName);
-        if (!suppressedUntil || Date.now() >= suppressedUntil) {
-          this._spawnHistoryScribeWorker(channelName).catch(() => {});
-        }
-      }
     }
 
     const bareName = channelName.startsWith('#') ? channelName.slice(1) : channelName;

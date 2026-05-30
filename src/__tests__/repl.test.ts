@@ -928,10 +928,6 @@ describe('ArmamentApp - Status Line', () => {
     expect(after).not.toBe(before);
   });
 
-  it('should updateStatusLine without throwing', () => {
-    expect(() => repl.updateStatusLine()).not.toThrow();
-  });
-
   it('should get usage stats', () => {
     const usage = repl.getUsage();
     expect(usage).toHaveProperty('inputTokens');
@@ -1446,15 +1442,6 @@ describe('ArmamentApp - Agent Loop', () => {
     repl = new ArmamentApp();
   });
 
-  it('should not have agent loop by default', () => {
-    expect(repl.hasAgentLoop()).toBe(false);
-  });
-
-  it('should set agent loop', () => {
-    repl.setAgentLoop({ run: vi.fn() });
-    expect(repl.hasAgentLoop()).toBe(true);
-  });
-
   it('should get current mode', () => {
     const mode = repl.getMode();
     expect(typeof mode).toBe('string');
@@ -1625,11 +1612,6 @@ describe('ArmamentApp - Output Stream', () => {
 
   beforeEach(() => {
     repl = new ArmamentApp();
-  });
-
-  it('should set output stream', () => {
-    const mockStream = { write: vi.fn() };
-    expect(() => repl.setOutputStream(mockStream)).not.toThrow();
   });
 
   it('should set processing state', () => {

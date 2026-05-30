@@ -4,7 +4,7 @@ import { UserConfig } from '../config/index.js';
 import { registerConfigPanelSchemas } from './TuiConfigSchemas.js';
 import { getGlobalEventBus } from './EventBus.js';
 import type { IProviderConfig } from '../core/index.js';
-import type { MenuPanel } from '../tui/session-menu/types.js';
+import type { MenuPanel } from '../tui/ConfigPane.js';
 import {
   registerSessionSchemas,
   registerContextSchemas,
@@ -317,29 +317,13 @@ export class TuiConfigPanes {
       'session.showAgentHeader.value': 'session.showAgentHeader',
       'session.maxTurns.value': 'session.maxTurns',
       'session.timeout.value': 'session.conversationTimeout',
-      'session.historyScribeEnabled.value': 'session.historyScribeEnabled',
-      'session.historyScribeTimeout.value': 'session.historyScribeTimeout',
-      'session.historyScribeMaxMessages.value': 'session.historyScribeMaxMessages',
       'session.recurringPromptEnabled.value': 'session.recurringPromptEnabled',
       'session.recurringPromptInterval.value': 'session.recurringPromptInterval',
-      'session.scribeOnPrune.value': 'session.scribeOnPrune',
-      'session.scribeOnIdle.value': 'session.scribeOnIdle',
-      'session.scribeIntervalEnabled.value': 'session.scribeIntervalEnabled',
-      'session.scribeIntervalMinutes.value': 'session.scribeIntervalMinutes',
-      'session.historyScribeModel.value': 'session.historyScribeModel',
       'session.armadebug.value': 'session.armadebug',
       'session.driftMaxSize.value': 'drift.maxSizeBytes',
       // History pane paths (map history.* to session.*)
       'history.recurringPromptEnabled.value': 'session.recurringPromptEnabled',
       'history.recurringPromptInterval.value': 'session.recurringPromptInterval',
-      'history.historyScribeEnabled.value': 'session.historyScribeEnabled',
-      'history.scribeOnPrune.value': 'session.scribeOnPrune',
-      'history.scribeOnIdle.value': 'session.scribeOnIdle',
-      'history.historyScribeTimeout.value': 'session.historyScribeTimeout',
-      'history.scribeIntervalEnabled.value': 'session.scribeIntervalEnabled',
-      'history.scribeIntervalMinutes.value': 'session.scribeIntervalMinutes',
-      'history.historyScribeMaxMessages.value': 'session.historyScribeMaxMessages',
-      'history.historyScribeModel.value': 'session.historyScribeModel',
       // Web
       'session.braveApiKey.value': 'web.braveApiKey',
       'session.summarizationModel.value': 'web.summarizationModel',
@@ -390,12 +374,6 @@ export class TuiConfigPanes {
         this.refreshSchemas('session');
         this.refreshSchemas('session.budget');
         this.refreshSchemas('history');
-      }
-      // Live scribe reload when scribe settings change (triggers timer update)
-      if (cfgPath === 'session.historyScribeEnabled' || cfgPath === 'session.scribeOnIdle' ||
-          cfgPath === 'session.scribeIntervalEnabled' || cfgPath === 'session.scribeIntervalMinutes') {
-        try { getGlobalEventBus().emit({ type: 'scribe:config-changed' }); } catch {}
-        this.delegate.render();
       }
       // Live recurring prompt reload
       if (cfgPath === 'session.recurringPromptEnabled' || cfgPath === 'session.recurringPromptInterval') {

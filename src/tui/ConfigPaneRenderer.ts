@@ -3,7 +3,7 @@
  * Extracted from ConfigPane to keep files under 400 lines.
  */
 
-import type { MenuItem } from './session-menu/types.js';
+import type { MenuItem } from './ConfigPane.js';
 import type { ConfigPaneState, DetailConfig, DetailField, ListAction, ListView, ListRow } from './ConfigPane.js';
 
 /** Shared context passed to handler functions from ConfigPane. */

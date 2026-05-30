@@ -33,8 +33,6 @@ export abstract class ReplPublicAPI extends BaseRepl {
   protected lastUserMsg: string | undefined;
   protected lastResponseMeta: any = undefined;
   protected lastToolResultVal: IToolResult | undefined;
-  protected agentLoop: any = null;
-  protected outputStream: any = null;
   protected unsavedChanges = false;
   protected interruptCount = 0;
   protected _sessionState!: SessionState;
@@ -185,7 +183,7 @@ export abstract class ReplPublicAPI extends BaseRepl {
   /**
    * Gets the mode.
    */
-  getMode(): string { return this.agentLoop ? 'agent' : 'normal'; }
+  getMode(): string { return 'agent'; }
   /**
    * Gets the plan.
    */
@@ -322,23 +320,6 @@ export abstract class ReplPublicAPI extends BaseRepl {
    * Sets the processing.
    */
   setProcessing(state: boolean): void { this.processing = state; }
-  /**
-   * Sets the output stream.
-   */
-  setOutputStream(stream: any): void { this.outputStream = stream; }
-  /**
-   * Update status line.
-   */
-  updateStatusLine(): void {}
-
-  /**
-   * Sets the agent loop.
-   */
-  setAgentLoop(loop: any): void { this.agentLoop = loop; }
-  /**
-   * Checks whether agent loop exists.
-   */
-  hasAgentLoop(): boolean { return this.agentLoop != null; }
 
   /**
    * Simulate context usage.

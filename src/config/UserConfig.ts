@@ -25,16 +25,8 @@ export interface SessionSettings {
   conversationTimeout: number;
   budgetEnabled: boolean;
   budgetAmount: number;
-  historyScribeEnabled: boolean;
-  historyScribeTimeout: number;
-  historyScribeMaxMessages: number;
   recurringPromptEnabled: boolean;
   recurringPromptInterval: number;
-  scribeOnPrune: boolean;
-  scribeOnIdle: boolean;
-  scribeIntervalEnabled: boolean;
-  scribeIntervalMinutes: number;
-  historyScribeModel: string;
   armadebug?: boolean;
 }
 
@@ -123,16 +115,8 @@ const DEFAULT_SETTINGS: UserSettings = {
     conversationTimeout: 60,
     budgetEnabled: true,
     budgetAmount: 10.0,
-    historyScribeEnabled: true,
-    historyScribeTimeout: 15,
-    historyScribeMaxMessages: 50,
     recurringPromptEnabled: true,
     recurringPromptInterval: 5,
-    scribeOnPrune: true,
-    scribeOnIdle: true,
-    scribeIntervalEnabled: false,
-    scribeIntervalMinutes: 60,
-    historyScribeModel: '',
     armadebug: false,
   },
   context: {
