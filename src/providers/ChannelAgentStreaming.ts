@@ -150,6 +150,114 @@ const MAX_TOOL_FAILURES = 5;
 /** Agent-level circuit breaker cooldown — matches the BashCircuitBreaker cooldown. */
 const TOOL_FAIL_COOLDOWN_MS = 15_000;
 
+/** Build the options object passed to provider.invokeStream. */
+function buildInvokeOptions(
+  config: StreamingConfig,
+  toolDefs: unknown[],
+): Record<string, unknown> {
+  const options: Record<string, unknown> = { temperature: 0.7 };
+  if (config.maxOutputTokens) options.max_tokens = config.maxOutputTokens;
+  if (config.thinking) {
+    options.thinking = config.thinking;
+    if (!options.max_tokens) options.max_tokens = 16000;
+  }
+  if (config.modelOptions) Object.assign(options, config.modelOptions);
+  if (toolDefs.length > 0) options.tools = toolDefs;
+  return options;
+}
+
+/** Handle empty LLM response: retry or give up. */
+function tryHandleSilentRetry(
+  fullText: string,
+  hasToolCalls: boolean,
+  silentRetries: number,
+  maxRetries: number,
+): { shouldContinue: boolean; shouldBreak: boolean; errorText?: string } {
+  if (fullText || hasToolCalls) return { shouldContinue: false, shouldBreak: false };
+  if (silentRetries < maxRetries) return { shouldContinue: true, shouldBreak: false };
+  return {
+    shouldContinue: false,
+    shouldBreak: true,
+    errorText: `[LLM returned no response after ${maxRetries} retries. The API may be degraded. Try again.]`,
+  };
+}
+
+/** Execute one tool call with circuit breaker. Returns the result, duration, and parsed args. */
+async function executeOneTool(
+  tc: { id: string; name: string; arguments: string },
+  loop: IAgentLoop,
+  state: StreamingState,
+  config: StreamingConfig,
+  onToolCall: ((name: string, args: unknown) => void) | undefined,
+): Promise<{ result: ToolResult; durationMs: number; args: unknown }> {
+  let args: unknown;
+  try {
+    args = JSON.parse(tc.arguments);
+  } catch (parseErr: unknown) {
+    const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    return {
+      result: { success: false, error: { message: `Invalid JSON in tool arguments: ${errMsg}.`, code: 'PARSE_ERROR' } },
+      durationMs: 0,
+      args: {},
+    };
+  }
+
+  const failEntry = state.toolFailCounts.get(tc.name);
+  let failCount = failEntry?.count ?? 0;
+  if (failEntry && Date.now() - failEntry.lastFailure >= TOOL_FAIL_COOLDOWN_MS) {
+    failCount = 0;
+    state.toolFailCounts.delete(tc.name);
+  }
+  if (failCount >= MAX_TOOL_FAILURES) {
+    return {
+      result: { success: false, error: { message: `CIRCUIT BREAKER: "${tc.name}" has failed ${failCount} consecutive times. Try a different approach.`, code: 'CIRCUIT_BREAK' } },
+      durationMs: 0,
+      args,
+    };
+  }
+
+  onToolCall?.(tc.name, args);
+  config.onToolCall?.(tc.name, args);
+  const startMs = Date.now();
+  const tool = loop.getTool(tc.name);
+  let result: ToolResult;
+  if (tool) {
+    try {
+      result = await tool.execute(args, { turnNumber: state.turnCount, state: {}, metadata: {} });
+    } catch (e: unknown) {
+      result = { success: false, error: { message: e instanceof Error ? e.message : String(e), code: 'TOOL_ERROR' } };
+    }
+  } else {
+    result = { success: false, error: { message: `Tool not found: ${tc.name}`, code: 'NOT_FOUND' } };
+  }
+
+  const durationMs = Date.now() - startMs;
+  if (!result.success) {
+    state.toolFailCounts.set(tc.name, { count: failCount + 1, lastFailure: Date.now() });
+  } else {
+    state.toolFailCounts.delete(tc.name);
+  }
+  return { result, durationMs, args };
+}
+
+/** Add tool result messages to the message manager. */
+function addToolResults(
+  mm: IMessageManager,
+  toolResults: Array<{ tc: { id: string; name: string; arguments: string }; result: ToolResult; durationMs: number }>,
+): void {
+  for (const { tc, result } of toolResults) {
+    const rawContent = result.success ? result.data : result.error;
+    const safeContent = typeof rawContent === 'string'
+      ? rawContent.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
+      : rawContent;
+    mm.addMessage({
+      role: 'tool',
+      content: JSON.stringify(safeContent),
+      tool_call_id: tc.id,
+    });
+  }
+}
+
 /**
  * Runs the streaming message loop. Yields StreamEvents as the provider streams responses.
  * Handles tool execution, circuit-breaking, message injection, and compaction.
@@ -171,7 +279,6 @@ export async function* runStreamingLoop(
   };
 
   if (!provider.invokeStream) {
-    // Fallback: use non-streaming runTurn and yield the full response
     const response = await loop.runTurn(augmentedInput, config.maxTurns);
     yield { type: 'text', text: response };
     yield { type: 'done' };
@@ -181,7 +288,6 @@ export async function* runStreamingLoop(
   try {
     const mm = loop.getMessageManager();
     sanitizeOrphanedToolCalls(mm);
-
     mm.addMessage({ role: 'user', content: augmentedInput });
 
     const maxIterations = config.maxTurns ?? 200;
@@ -195,27 +301,12 @@ export async function* runStreamingLoop(
         state.status = 'idle';
         break;
       }
-      sanitizeOrphanedToolCalls(mm); // sanitize before every API call, not just at start
-      const messages = mm.getMessages();
-      const toolDefs = loop.getToolDefinitions();
-      const options: Record<string, unknown> = { temperature: 0.7 };
-      if (config.maxOutputTokens) {
-        options.max_tokens = config.maxOutputTokens;
-      }
-      if (config.thinking) {
-        options.thinking = config.thinking;
-        if (!options.max_tokens) {
-          options.max_tokens = 16000;
-        }
-      }
-      // Merge model-specific options (effort, reasoning_effort, etc.) — override defaults
-      if (config.modelOptions) {
-        Object.assign(options, config.modelOptions);
-      }
-      if (toolDefs.length > 0) {
-        options.tools = toolDefs;
-      }
 
+      sanitizeOrphanedToolCalls(mm);
+      const messages = mm.getMessages();
+      const options = buildInvokeOptions(config, loop.getToolDefinitions());
+
+      // ------ Stream chunks ------
       let fullText = '';
       let fullThinking = '';
       const toolCalls: Array<{ id: string; name: string; arguments: string }> = [];
@@ -249,108 +340,47 @@ export async function* runStreamingLoop(
         }
       }
 
-      // ---------- Silent response retry ----------
+      // ------ Silent retry ------
       if (!fullText && !hasToolCalls) {
         silentRetries++;
-        if (silentRetries < MAX_SILENT_RETRIES) {
-          // LLM returned nothing — retry without adding the empty assistant message
+        const retry = tryHandleSilentRetry(fullText, hasToolCalls, silentRetries, MAX_SILENT_RETRIES);
+        if (retry.shouldContinue) {
           state.status = 'thinking';
           continue;
         }
-        // Give up after max retries — yield error so user sees something
-        yield { type: 'text', text: `[LLM returned no response after ${MAX_SILENT_RETRIES} retries. The API may be degraded. Try again.]` };
-        mm.addMessage({ role: 'assistant', content: `[No response — retries exhausted]` });
+        if (retry.errorText) {
+          yield { type: 'text', text: retry.errorText };
+          mm.addMessage({ role: 'assistant', content: `[No response — retries exhausted]` });
+        }
         break;
       }
 
-      const assistantContent = fullText + (toolCalls.length > 0 ? '' : '');
       mm.addMessage({
         role: 'assistant',
-        content: assistantContent,
+        content: fullText,
         tool_calls: toolCalls.length > 0 ? toolCalls.map(tc => ({
-          id: tc.id,
-          name: tc.name,
-          arguments: tc.arguments,
+          id: tc.id, name: tc.name, arguments: tc.arguments,
         })) : undefined,
         reasoning: fullThinking || undefined,
       });
 
-      // ---------- Stop check ----------
-      if (!hasToolCalls && state.injectedMessages.length === 0) {
-        break;
-      }
+      // ------ Stop check ------
+      if (!hasToolCalls && state.injectedMessages.length === 0) break;
 
-      // ---------- Tool execution ----------
+      // ------ Tool execution ------
       state.status = 'tool_use';
       let hitTerminal = false;
-      const toolResults: Array<{ tc: typeof toolCalls[0]; result: ToolResult }> = [];
+      const toolResults: Array<{ tc: typeof toolCalls[0]; result: ToolResult; durationMs: number }> = [];
       for (const tc of toolCalls) {
-        let args: unknown;
-        try {
-          args = JSON.parse(tc.arguments);
-        } catch (parseErr: unknown) {
-          logError('agent', `Failed to parse tool args for ${tc.name}: ${tc.arguments.slice(0, 100)}`, parseErr);
-          const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-          const result: ToolResult = { success: false, error: { message: `Invalid JSON in tool arguments: ${errMsg}. Your arguments contained malformed JSON. Please retry with a properly formatted JSON object matching the tool's schema.`, code: 'PARSE_ERROR' } };
-          config.onToolResult?.(tc.name, {}, result, 0);
-          yield { type: 'tool_result' as const, toolName: tc.name, toolCall: tc, result, durationMs: 0 };
-          toolResults.push({ tc, result });
-          continue;
-        }
-        const failEntry = state.toolFailCounts.get(tc.name);
-        let failCount = failEntry?.count ?? 0;
-        // Reset fail count if cooldown has elapsed since last failure
-        if (failEntry && Date.now() - failEntry.lastFailure >= TOOL_FAIL_COOLDOWN_MS) {
-          failCount = 0;
-          state.toolFailCounts.delete(tc.name);
-        }
-        if (failCount >= MAX_TOOL_FAILURES) {
-          const result: ToolResult = { success: false, error: { message: `CIRCUIT BREAKER: "${tc.name}" has failed ${failCount} consecutive times. STOP calling this tool — your arguments are incorrect or the tool cannot complete this task. Try a different approach or report the issue.`, code: 'CIRCUIT_BREAK' } };
-          config.onToolResult?.(tc.name, args, result, 0);
-          yield { type: 'tool_result' as const, toolName: tc.name, toolCall: tc, result, durationMs: 0 };
-          toolResults.push({ tc, result });
-          continue;
-        }
-        onToolCall?.(tc.name, args);
-        config.onToolCall?.(tc.name, args);
-        const startMs = Date.now();
-        const tool = loop.getTool(tc.name);
-        let result: ToolResult;
-        if (tool) {
-          try {
-            const toolContext = { turnNumber: state.turnCount, state: {}, metadata: {} };
-            result = await tool.execute(args, toolContext);
-          } catch (e: unknown) {
-            result = { success: false, error: { message: e instanceof Error ? e.message : String(e), code: 'TOOL_ERROR' } };
-          }
-        } else {
-          result = { success: false, error: { message: `Tool not found: ${tc.name}`, code: 'NOT_FOUND' } };
-        }
-        const durationMs = Date.now() - startMs;
-        if (!result.success) {
-          state.toolFailCounts.set(tc.name, { count: failCount + 1, lastFailure: Date.now() });
-        } else {
-          state.toolFailCounts.delete(tc.name);
-        }
-        if (result.success && (result.data as Record<string, unknown> | undefined)?._terminal) {
+        const executed = await executeOneTool(tc, loop, state, config, onToolCall);
+        config.onToolResult?.(tc.name, executed.args, executed.result, executed.durationMs);
+        yield { type: 'tool_result' as const, toolName: tc.name, toolCall: tc, result: executed.result, durationMs: executed.durationMs };
+        toolResults.push({ tc, result: executed.result, durationMs: executed.durationMs });
+        if (executed.result.success && (executed.result.data as Record<string, unknown> | undefined)?._terminal) {
           hitTerminal = true;
         }
-        config.onToolResult?.(tc.name, args, result, durationMs);
-        yield { type: 'tool_result' as const, toolName: tc.name, toolCall: tc, result, durationMs };
-        toolResults.push({ tc, result });
       }
-      for (const { tc, result } of toolResults) {
-        const rawContent = result.success ? result.data : result.error;
-        // Sanitize tool output: strip ANSI control chars so JSON transmission is safe
-        const safeContent = typeof rawContent === 'string'
-          ? rawContent.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
-          : rawContent;
-        mm.addMessage({
-          role: 'tool',
-          content: JSON.stringify(safeContent),
-          tool_call_id: tc.id,
-        });
-      }
+      addToolResults(mm, toolResults);
 
       if (hitTerminal) break;
 
