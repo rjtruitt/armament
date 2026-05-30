@@ -6,16 +6,43 @@ import { logError } from '../core/index.js';
 import type { ITool } from 'iteratio';
 import { McpToolExecution } from './McpToolExecution.js';
 
+/** A tool discovered from an MCP server. */
+export interface McpDiscoveredTool {
+  name: string;
+  description: string;
+  inputSchema?: unknown;
+}
+
+/** MCP server configuration with known and dynamic properties. */
+export interface McpServerConfig {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  baseUrl?: string;
+  transport?: string;
+  timeout?: number;
+  auth?: {
+    clientName?: string;
+    scopes?: string[] | string;
+  };
+  tools?: McpDiscoveredTool[];
+  autoApprove?: string[];
+  [key: string]: unknown;
+}
+
 /**
  * MCP server connection state.
  */
 export interface McpServer {
   name: string;
-  config: any;
+  config: McpServerConfig;
   status: string;
-  tools: any[];
+  tools: McpDiscoveredTool[];
   client?: import('@modelcontextprotocol/sdk/client/index.js').Client;
-  transport?: any;
+  transport?: import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransport
+    | import('@modelcontextprotocol/sdk/client/stdio.js').StdioClientTransport
+    | undefined;
 }
 
 /**
@@ -25,7 +52,7 @@ export interface McpManagerCallbacks {
   writeMessage(type: string, sender: string, text: string, channel?: string): void;
   startThinking(channel?: string): void;
   stopThinking(channel?: string): void;
-  rebuildMcpMenu(names: string[], configs: Array<{ name: string; config: any }>): void;
+  rebuildMcpMenu(names: string[], configs: Array<{ name: string; config: McpServerConfig }>): void;
   getChannelAgents(): Map<string, { registerTools(tools: ITool[]): void; deregisterTool(name: string): boolean }>;
 }
 
@@ -94,7 +121,7 @@ export class McpManager {
   }
 
   /** Connect to an MCP server via streamable-http or stdio. */
-  async connectMcp(name: string, config: any, opts?: { nonInteractive?: boolean }): Promise<void> {
+  async connectMcp(name: string, config: McpServerConfig, opts?: { nonInteractive?: boolean }): Promise<void> {
     const transport = this.getMcpTransportType(config);
     this.callbacks.writeMessage('system', 'mcp',
       `Connecting to ${name} (${transport})...`, '#logs');
@@ -105,8 +132,10 @@ export class McpManager {
     }
 
     let mcpClient: import('@modelcontextprotocol/sdk/client/index.js').Client | undefined;
-    let mcpTransport: any;
-    let tools: any[] = [];
+    let mcpTransport: import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransport
+      | import('@modelcontextprotocol/sdk/client/stdio.js').StdioClientTransport
+      | undefined;
+    let tools: McpDiscoveredTool[] = [];
 
     if ((transport === 'streamable-http' || transport === 'sse') && config.url) {
       try {
@@ -114,7 +143,7 @@ export class McpManager {
         const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
         const { McpOAuthProvider } = await import('./McpOAuthProvider.js');
 
-        const auth = config.auth ?? {};
+        const auth = config.auth ?? {} as NonNullable<McpServerConfig['auth']>;
         const userConfig = UserConfig.instance();
         const authProvider = new McpOAuthProvider({
           serverName: name,
@@ -146,7 +175,7 @@ export class McpManager {
             || authErr.constructor?.name === 'StreamableHTTPError'
             || authErr.message?.includes('Unauthorized')
             || authErr.message?.includes('401')
-            || (authErr as any).code === 401);
+            || ((authErr instanceof Error ? authErr : new Error(String(authErr))) as Error & { code?: number }).code === 401);
           if (isAuthErr && opts?.nonInteractive) {
             throw new Error(`${name} requires authentication`);
           } else if (isAuthErr) {
@@ -174,7 +203,7 @@ export class McpManager {
         }
 
         const toolsResult = await mcpClient.listTools();
-        tools = (toolsResult.tools ?? []).map((t: any) => ({
+        tools = (toolsResult.tools ?? []).map((t: { name: string; description?: string; inputSchema: unknown }) => ({
           name: t.name,
           description: t.description ?? `${t.name} tool`,
           inputSchema: t.inputSchema,
@@ -225,7 +254,7 @@ export class McpManager {
         await mcpClient.connect(mcpTransport);
 
         const toolsResult = await mcpClient.listTools();
-        tools = (toolsResult.tools ?? []).map((t: any) => ({
+        tools = (toolsResult.tools ?? []).map((t: { name: string; description?: string; inputSchema: unknown }) => ({
           name: t.name,
           description: t.description ?? `${t.name} tool`,
           inputSchema: t.inputSchema,
@@ -287,11 +316,11 @@ export class McpManager {
       const { McpOAuthProvider } = await import('./McpOAuthProvider.js');
       const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
       const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-      const auth = server.config.auth ?? {};
+      const auth = server.config.auth ?? {} as NonNullable<McpServerConfig['auth']>;
       const userConfig = UserConfig.instance();
       const authProvider = new McpOAuthProvider({
         serverName: name,
-        serverUrl: server.config.url,
+        serverUrl: server.config.url!,
         clientName: auth.clientName || userConfig.mcpClientName,
         scopes: auth.scopes ? (Array.isArray(auth.scopes) ? auth.scopes : auth.scopes.split(' ')) : [],
         onMessage: (msg: string) => this.callbacks.writeMessage('system', 'auth', msg, '#control'),
@@ -303,7 +332,7 @@ export class McpManager {
         `${name} needs auth — opening browser...`, '#logs');
 
       const transport = new StreamableHTTPClientTransport(
-        new URL(server.config.url),
+        new URL(server.config.url!),
         { authProvider },
       );
       const client = new Client({ name: 'armament', version: '1.0.0' });
@@ -315,13 +344,13 @@ export class McpManager {
           const code = await authProvider.waitForAuthCode();
           await transport.finishAuth(code);
           const freshTransport = new StreamableHTTPClientTransport(
-            new URL(server.config.url),
+            new URL(server.config.url!),
             { authProvider },
           );
           const freshClient = new Client({ name: 'armament', version: '1.0.0' });
           await freshClient.connect(freshTransport);
           const toolsResult = await freshClient.listTools();
-          const tools = (toolsResult.tools ?? []).map((t: any) => ({
+          const tools = (toolsResult.tools ?? []).map((t: { name: string; description?: string; inputSchema: unknown }) => ({
             name: t.name,
             description: t.description ?? `${t.name} tool`,
             inputSchema: t.inputSchema,
@@ -334,7 +363,7 @@ export class McpManager {
         throw authErr;
       }
       const toolsResult = await client.listTools();
-      const tools = (toolsResult.tools ?? []).map((t: any) => ({
+      const tools = (toolsResult.tools ?? []).map((t: { name: string; description?: string; inputSchema: unknown }) => ({
         name: t.name,
         description: t.description ?? `${t.name} tool`,
         inputSchema: t.inputSchema,
@@ -368,7 +397,7 @@ export class McpManager {
   }
 
   /** Show the MCP server picker in the TUI. */
-  showMcpPicker(showPicker: (title: string, items: any[], onSelect: (item: any) => void) => void): void {
+  showMcpPicker(showPicker: (title: string, items: Array<{ name: string; description: string; category: 'config' }>, onSelect: (item: { name: string }) => void) => void): void {
     const items = [...this.mcpServers.values()].map(s => {
       const transport = this.getMcpTransportType(s.config);
       const authStatus = s.status === 'connected' ? 'auth:ok' : 'auth:expired';
@@ -383,7 +412,7 @@ export class McpManager {
       this.callbacks.writeMessage('system', '*', 'No MCP servers configured. Use /mcp add <name> {...} to add one.');
       return;
     }
-    showPicker('MCP servers — select to re-auth', items, (selected: any) => {
+    showPicker('MCP servers — select to re-auth', items, (selected) => {
       this.triggerMcpAuth(selected.name);
     });
   }
@@ -394,7 +423,7 @@ export class McpManager {
   }
 
   /** Determine transport type from config. */
-  getMcpTransportType(config: any): string {
+  getMcpTransportType(config: McpServerConfig): string {
     if (!config) return 'stdio';
     if (config.url || config.baseUrl) {
       if (config.transport === 'sse') return 'sse';
@@ -412,7 +441,7 @@ export class McpManager {
     const file = path.join(dir, 'mcp.json');
     try {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      let existing: Array<{ name: string; config: any }> = [];
+      let existing: Array<{ name: string; config: McpServerConfig }> = [];
       try {
         if (fs.existsSync(file)) {
           existing = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -442,7 +471,7 @@ export class McpManager {
   }
 
   /** Load MCP server configs from ~/.armament/mcp.json. */
-  loadMcpConfig(): Array<{ name: string; config: any }> {
+  loadMcpConfig(): Array<{ name: string; config: McpServerConfig }> {
     const file = path.join(homedir(), '.arma', 'mcp.json');
     try {
       if (fs.existsSync(file)) {
