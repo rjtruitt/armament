@@ -10,7 +10,7 @@ export interface MenuItem {
   id: string;
   label?: string;
   type?: 'submenu' | 'toggle' | 'choice' | 'text' | 'action' | 'display' | 'json';
-  value?: any;
+  value?: unknown;
   hidden?: boolean;
   readonly?: boolean;
   description?: string;

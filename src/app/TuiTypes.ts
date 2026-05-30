@@ -4,6 +4,7 @@
  */
 
 import type { RGB } from '../rendering/index.js';
+import type { McpServerConfig } from './McpManager.js';
 
 export type { RGB };
 
@@ -32,7 +33,7 @@ export interface TuiProviderInfo {
 export interface TuiMenuConfig {
   providers?: TuiProviderInfo[];
   mcpServers?: string[];
-  mcpConfigs?: Array<{ name: string; config: any }>;
+  mcpConfigs?: Array<{ name: string; config: McpServerConfig }>;
   model?: string;
   budget?: string;
   mcpClientName?: string;

@@ -15,8 +15,8 @@ export interface IAgentInstance {
   parentId?: string;
   childIds: string[];
 }
-/** Type union for AgentStatus: idle, thinking, streaming, waiting, stopped, error. */
-export type AgentStatus = 'idle' | 'thinking' | 'streaming' | 'tool-use' | 'waiting' | 'stopped' | 'error';
+/** Type union for AgentStatus: idle, thinking, streaming, waiting, stopped, error, running. */
+export type AgentStatus = 'idle' | 'thinking' | 'streaming' | 'tool-use' | 'waiting' | 'stopped' | 'error' | 'running';
 /** Manages agent lifecycle: spawn, kill, pause, resume, fork, and inter-agent messaging. */
 export interface IAgentManager {
   spawn(name: string, opts?: IAgentSpawnOptions): Promise<IAgentInstance>;

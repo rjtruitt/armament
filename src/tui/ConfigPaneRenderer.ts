@@ -226,7 +226,7 @@ export function handleDetailKey(ctx: ConfigPaneContext, key: string): boolean {
       }
       // Handle action buttons (e.g. [delete], [save]) in detail view
       if (item.type === 'action') {
-        ctx.onAction?.((item as any).key, activeRow?.id ?? '', ctx.currentPanelId);
+        ctx.onAction?.((item as DetailField).key, activeRow?.id ?? '', ctx.currentPanelId);
         return true;
       }
       return true;

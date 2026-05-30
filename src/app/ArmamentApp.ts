@@ -577,7 +577,7 @@ export class ArmamentApp extends ReplPublicAPI {
     return {
       id: agent.id, name: agent.name, channelId: `chan-${id}`,
       model: agent.model, provider: agent.provider, systemPrompt: agent.systemPrompt,
-      status: 'running' as any, turnCount: 0, tokenUsage: 0, cost: 0,
+      status: 'running', turnCount: 0, tokenUsage: 0, cost: 0,
       createdAt: Date.now(), lastActivity: Date.now(), childIds: [],
     };
   }
