@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { UserConfig } from '../config/UserConfig.js';
 /**
  * DebugShell — Interactive/batch debug CLI for armament.
  *
@@ -353,10 +354,9 @@ function getCommandGroups(): DebugCommandGroup[] {
         get: {
           description: 'Get a config value: config get <path>',
           handler: (args, _app) => {
-            const { UserConfig } = require('../config/UserConfig.js');
             const cfg = UserConfig.instance();
             if (!args[0]) {
-              return { success: true, data: cfg.getAllSettings?.() ?? {} };
+              return { success: true, data: cfg.settings };
             }
             const val = cfg.getPath?.(args[0]);
             return { success: true, data: { [args[0]]: val ?? null } };
@@ -371,7 +371,6 @@ function getCommandGroups(): DebugCommandGroup[] {
         list: {
           description: 'List configured providers and their models',
           handler: (_args, _app) => {
-            const { UserConfig } = require('../config/UserConfig.js');
             const cfg = UserConfig.instance();
             return {
               success: true,

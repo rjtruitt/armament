@@ -1,4 +1,5 @@
 import { dirname } from 'path';
+import { getGlobalEventBus } from './EventBus.js';
 
 /** A pending permission request awaiting user approval or denial.
  * @property {string} id - Unique identifier for this permission request.
@@ -104,7 +105,6 @@ export class PermissionStore {
   private notify() {
     for (const fn of this.listeners) fn();
     try {
-      const { getGlobalEventBus } = require('./EventBus.js');
       getGlobalEventBus().emit({ type: 'permission:pending', pending: this.listPending() });
     } catch {}
   }

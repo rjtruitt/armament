@@ -1,4 +1,5 @@
 import type { IUsageStats, IContextUsage, IMessage } from '../core/index.js';
+import { UserConfig } from '../config/UserConfig.js';
 
 /**
  * Memory entry interface.
@@ -407,7 +408,6 @@ export class SessionState implements ISessionState {
    * Full stack traces for LLM consumption.
    */
   buildArmadebugInjection(): string {
-    const { UserConfig } = require('../config/UserConfig.js');
     const settings = UserConfig.instance().settings.session;
     if (!settings || !settings.armadebug || this._errorBuffer.length === 0) return '';
     return `── arma debug ──────────────────\nThe following errors have occurred this session (${this._errorBuffer.length}):\n${this._errorBuffer.join('\n')}\n─────────────────────────────────\n`;
