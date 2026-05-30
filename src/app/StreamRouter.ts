@@ -301,6 +301,7 @@ export class StreamRouter {
     // Generator error — log to #errors channel, store in debug buffer, and re-throw
     const errMsg = err instanceof Error ? err.message : String(err);
     tui?.writeMessage('system', 'err', `Stream error on ${target.channel}: ${errMsg}`, '#errors');
+    tui?.writeMessage('system', 'err', `Stream error: ${errMsg}`, target.channel);
     this.deps.onError?.('stream', `Stream error on ${target.channel}`, err);
     throw err;
   } finally {

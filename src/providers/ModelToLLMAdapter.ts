@@ -8,6 +8,13 @@ function safeParseJSON(raw: string): unknown {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
+/** Strip lone surrogates from a string — they break JSON serialization to LLM APIs.
+ *  JavaScript allows lone surrogates in strings (e.g. broken emoji, truncated UTF-16),
+ *  but JSON requires valid UTF-8. Replaces them with the Unicode replacement char. */
+function sanitizeContent(s: string): string {
+  return s.replace(/[\uD800-\uDFFF]/gu, '\uFFFD');
+}
+
 /** Normalized message format used by the adapter layer. */
 export interface SimpleMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -104,15 +111,20 @@ export class ModelToLLMAdapter implements ILLMProvider {
 
       if (m.content && m.role !== 'tool') {
         if (Array.isArray(m.content)) {
-          // Already content blocks (e.g. multi-modal: text + image)
-          content.push(...m.content as Record<string, unknown>[]);
+          // Already content blocks (e.g. multi-modal: text + image) — sanitize text blocks
+          content.push(...(m.content as Record<string, unknown>[]).map(b => {
+            if (b.type === 'text' && typeof b.text === 'string') {
+              return { ...b, text: sanitizeContent(b.text) };
+            }
+            return b;
+          }));
         } else {
-          content.push({ type: 'text' as const, text: m.content });
+          content.push({ type: 'text' as const, text: sanitizeContent(m.content) });
         }
       }
 
       if (m.role === 'assistant' && m.reasoning) {
-        content.push({ type: 'thinking' as const, thinking: m.reasoning });
+        content.push({ type: 'thinking' as const, thinking: sanitizeContent(m.reasoning) });
       }
 
       if (m.role === 'assistant' && m.tool_calls) {
@@ -241,14 +253,19 @@ export class ModelToLLMAdapter implements ILLMProvider {
       const content: Record<string, unknown>[] = [];
       if (m.content && m.role !== 'tool') {
         if (Array.isArray(m.content)) {
-          // Already content blocks (e.g. multi-modal: text + image)
-          content.push(...m.content as Record<string, unknown>[]);
+          // Already content blocks (e.g. multi-modal: text + image) — sanitize text blocks
+          content.push(...(m.content as Record<string, unknown>[]).map(b => {
+            if (b.type === 'text' && typeof b.text === 'string') {
+              return { ...b, text: sanitizeContent(b.text) };
+            }
+            return b;
+          }));
         } else {
-          content.push({ type: 'text' as const, text: m.content });
+          content.push({ type: 'text' as const, text: sanitizeContent(m.content) });
         }
       }
       if (m.role === 'assistant' && m.reasoning) {
-        content.push({ type: 'thinking' as const, thinking: m.reasoning });
+        content.push({ type: 'thinking' as const, thinking: sanitizeContent(m.reasoning) });
       }
       if (m.role === 'assistant' && m.tool_calls) {
         for (const tc of m.tool_calls) {
