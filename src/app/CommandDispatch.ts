@@ -43,7 +43,7 @@ export interface CommandContext {
   loadContext: (nameOrFile: string) => void;
   showContextPicker: () => void;
   addStickyNote: (content: string) => void;
-  removeStickyNote: (index: number) => void;
+  removeStickyNote: (idOrIndex: string | number) => void;
   listStickyNotes: () => void;
   killAgent: (name: string) => void;
   switchChannel: (nameOrIndex: string | number) => void;

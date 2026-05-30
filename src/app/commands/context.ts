@@ -27,28 +27,40 @@ export function getContextCommands(): CommandRegistration[] {
       },
     },
     {
-      name: 'stickynote',
-      aliases: ['sticky'],
-      description: 'Add/list sticky note reminders',
+      name: 'sticky',
+      aliases: ['stickynote'],
+      description: 'Add a sticky note reminder (use /stickies to list)',
       handler: (args, ctx) => {
         const text = args.join(' ').trim();
-        if (!text) {
-          ctx.listStickyNotes();
-        } else {
+        if (text) {
           ctx.addStickyNote(text);
         }
         return { handled: true };
       },
     },
     {
+      name: 'stickies',
+      description: 'List all sticky note reminders',
+      handler: (_args, ctx) => {
+        ctx.listStickyNotes();
+        return { handled: true };
+      },
+    },
+    {
       name: 'unsticky',
-      description: 'Remove a sticky note',
+      description: 'Remove a sticky note — usage: /unsticky <id>',
       handler: (args, ctx) => {
-        const idx = parseInt(args[0], 10);
-        if (!isNaN(idx)) {
-          ctx.removeStickyNote(idx);
+        const raw = args[0];
+        if (!raw) {
+          ctx.tui?.writeMessage('system', 'error', 'Usage: /unsticky <id> (use /stickies to see IDs)', ctx.activeChannel || '#control');
+          return { handled: true };
+        }
+        // Try numeric first (could be ID or index)
+        const num = parseInt(raw, 10);
+        if (!isNaN(num)) {
+          ctx.removeStickyNote(num);
         } else {
-          ctx.tui?.writeMessage('system', 'error', 'Usage: /unsticky <index>', '#control');
+          ctx.removeStickyNote(raw);
         }
         return { handled: true };
       },

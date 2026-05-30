@@ -308,7 +308,7 @@ export class ArmamentApp extends ReplPublicAPI {
         globalConfig: {
           mcpServers: [...this.mcpServers.entries()].map(([name, s]) => ({ name, config: s.config })),
         },
-        stickyNotes: this._sessionState.stickyNotes.map(n => `${n.position}:${n.text}`),
+        stickyNotes: this._sessionState.stickyNotes.map(n => `${n.id}:${n.position}:${n.text}`),
         activeTools: this._activeToolNames,
       }).catch(() => {});
     }

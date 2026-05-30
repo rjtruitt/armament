@@ -49,7 +49,7 @@ export interface CommandContextHost {
   loadContext: (nameOrFile: string) => any;
   showContextPicker: () => void;
   addStickyNote: (content: string) => void;
-  removeStickyNote: (index: number) => void;
+  removeStickyNote: (idOrIndex: string | number) => void;
   listStickyNotes: () => void;
   killAgent: (name: string) => void;
   switchChannel: (nameOrIndex: string | number) => void;

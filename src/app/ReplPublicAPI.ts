@@ -549,29 +549,42 @@ export abstract class ReplPublicAPI extends BaseRepl {
    * Add sticky note.
    */
   addStickyNote(content: string): void {
-    this._sessionState.addStickyNote(content);
-    this.tuiMode?.writeMessage('system', 'info', `\u{1F4DD} Sticky note #${this._sessionState.stickyNotes.length - 1} added: "${content}"`, '#control');
+    const note = this._sessionState.addStickyNote(content);
+    const channel = this.activeChannelName || '#control';
+    this.tuiMode?.writeMessage('system', 'info', `📝 Sticky #${note.id}: "${content}"`, channel);
   }
   /**
-   * Remove sticky note.
+   * Remove sticky note by id or index.
    */
-  removeStickyNote(index: number): void {
-    if (index < 0 || index >= this._sessionState.stickyNotes.length) {
-      this.tuiMode?.writeMessage('system', 'error', `Invalid sticky note index: ${index} (have ${this._sessionState.stickyNotes.length})`, '#control');
-      return;
+  removeStickyNote(idOrIndex: string | number): void {
+    const channel = this.activeChannelName || '#control';
+    const notes = this._sessionState.stickyNotes;
+    let target: string;
+    if (typeof idOrIndex === 'number' && idOrIndex < notes.length) {
+      target = `#${notes[idOrIndex].id}`;
+    } else {
+      target = `#${idOrIndex}`;
     }
-    const removed = this._sessionState.stickyNotes[index];
-    this._sessionState.removeStickyNote(index);
-    this.tuiMode?.writeMessage('system', 'info', `Removed sticky note #${index}: "${removed.text}"`, '#control');
+    const removed = this._sessionState.removeStickyNote(idOrIndex);
+    if (removed) {
+      this.tuiMode?.writeMessage('system', 'info', `🗑 Removed sticky ${target}`, channel);
+    } else {
+      this.tuiMode?.writeMessage('system', 'error', `Sticky ${target} not found — use /stickies to see IDs`, channel);
+    }
   }
   /**
-   * List sticky notes.
+   * List sticky notes to the current channel.
    */
   listStickyNotes(): void {
-    if (this._sessionState.stickyNotes.length === 0) { this.tuiMode?.writeMessage('system', 'info', 'No sticky notes set.', '#control'); return; }
-    this.tuiMode?.writeMessage('system', 'info', '\u{1F4DD} Active sticky notes:', '#control');
-    for (let i = 0; i < this._sessionState.stickyNotes.length; i++) {
-      this.tuiMode?.writeMessage('system', 'info', `  [${i}] ${this._sessionState.stickyNotes[i].text}`, '#control');
+    const channel = this.activeChannelName || '#control';
+    const notes = this._sessionState.stickyNotes;
+    if (notes.length === 0) {
+      this.tuiMode?.writeMessage('system', 'info', 'No sticky notes set.', channel);
+      return;
+    }
+    this.tuiMode?.writeMessage('system', 'info', `📌 Sticky notes (${notes.length}):`, channel);
+    for (const n of notes) {
+      this.tuiMode?.writeMessage('system', 'info', `  #${n.id}: ${n.text}`, channel);
     }
   }
   /**

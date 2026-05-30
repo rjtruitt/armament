@@ -13,6 +13,7 @@ export interface MemoryEntry {
  * Sticky note interface.
  */
 export interface StickyNote {
+  id: number;
   text: string;
   position: 'top' | 'bottom' | 'both';
 }
@@ -60,8 +61,8 @@ export interface ISessionState {
   addMessage(msg: IMessage): void;
   clearMessages(): void;
 
-  addStickyNote(content: string, position?: 'top' | 'bottom' | 'both'): void;
-  removeStickyNote(index: number): boolean;
+  addStickyNote(content: string, position?: 'top' | 'bottom' | 'both'): StickyNote;
+  removeStickyNote(idOrIndex: string | number): boolean;
   listStickyNotes(): StickyNote[];
   buildStickyInjection(): string;
   buildStickyInjectionTop(): string;
@@ -99,6 +100,7 @@ export class SessionState implements ISessionState {
   private _turnCount = 0;
   private _memories: MemoryEntry[] = [];
   private _stickyNotes: StickyNote[] = [];
+  private _stickyNoteCounter = 0;
   private _startTime = Date.now();
   private _pricing: Record<string, { input: number; output: number; cacheReadMultiplier?: number; cacheWriteMultiplier?: number }>;
   private _contextCapacity: number;
@@ -182,7 +184,15 @@ export class SessionState implements ISessionState {
   /**
    * Sets the sticky notes.
    */
-  set stickyNotes(notes: StickyNote[]) { this._stickyNotes = notes; }
+  set stickyNotes(notes: StickyNote[]) {
+    this._stickyNotes = notes;
+    // Ensure counter is past the highest ID (handles restored notes)
+    for (const n of notes) {
+      if (n.id && n.id >= this._stickyNoteCounter) {
+        this._stickyNoteCounter = n.id + 1;
+      }
+    }
+  }
   /**
    * Gets the start time.
    */
@@ -310,16 +320,27 @@ export class SessionState implements ISessionState {
   /**
    * Add sticky note.
    */
-  addStickyNote(content: string, position: 'top' | 'bottom' | 'both' = 'top'): void {
-    this._stickyNotes.push({ text: content, position });
+  addStickyNote(content: string, position: 'top' | 'bottom' | 'both' = 'top'): StickyNote {
+    const note: StickyNote = { id: ++this._stickyNoteCounter, text: content, position };
+    this._stickyNotes.push(note);
+    return note;
   }
 
   /**
-   * Remove sticky note.
+   * Remove sticky note by id.
    */
-  removeStickyNote(index: number): boolean {
-    if (index < 0 || index >= this._stickyNotes.length) return false;
-    this._stickyNotes.splice(index, 1);
+  removeStickyNote(idOrIndex: string | number): boolean {
+    if (typeof idOrIndex === 'string') {
+      const id = parseInt(idOrIndex, 10);
+      if (isNaN(id)) return false;
+      const idx = this._stickyNotes.findIndex(n => n.id === id);
+      if (idx === -1) return false;
+      this._stickyNotes.splice(idx, 1);
+      return true;
+    }
+    // Index-based fallback
+    if (idOrIndex < 0 || idOrIndex >= this._stickyNotes.length) return false;
+    this._stickyNotes.splice(idOrIndex, 1);
     return true;
   }
 
@@ -438,6 +459,7 @@ export class SessionState implements ISessionState {
     this._messages.length = 0;
     this._memories.length = 0;
     this._stickyNotes.length = 0;
+    this._stickyNoteCounter = 0;
     this._usageStats.inputTokens = 0;
     this._usageStats.outputTokens = 0;
     this._usageStats.totalTokens = 0;

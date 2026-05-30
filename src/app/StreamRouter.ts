@@ -134,11 +134,12 @@ export class StreamRouter {
 
     tui?.startThinking(target.channel);
 
-    for await (const chunk of agent.sendMessageStreaming(input)) {
-      if (interrupted?.()) break;
+    try {
+      for await (const chunk of agent.sendMessageStreaming(input)) {
+        if (interrupted?.()) break;
 
-      switch (chunk.type) {
-        case 'text':
+        switch (chunk.type) {
+          case 'text':
           if (!chunk.text) break;
           fullResponse += chunk.text;
           if (showText) {
@@ -293,6 +294,15 @@ export class StreamRouter {
           break;
       }
     }
+  } catch (err: unknown) {
+    // Generator error — log and re-throw for the caller's try/catch
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[StreamRouter] Stream error on ${target.channel}: ${errMsg}`);
+    throw err;
+  } finally {
+    // ALWAYS clear thinking indicator, no matter how the loop exits
+    tui?.stopThinking(target.channel);
+  }
 
     if (interrupted?.()) {
       tui?.stopThinking(target.channel);

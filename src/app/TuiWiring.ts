@@ -246,12 +246,25 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
   if (manifest) {
     if (manifest.stickyNotes) {
       deps.sessionState.stickyNotes = manifest.stickyNotes.map((n: any) => {
-        if (typeof n === 'string' && n.includes(':')) {
+        if (typeof n === 'string') {
+          // New format: "id:position:text" — extract id, position, text
+          const first = n.indexOf(':');
+          const second = n.indexOf(':', first + 1);
+          if (first !== -1 && second !== -1) {
+            const parsedId = parseInt(n.slice(0, first), 10);
+            const pos = n.slice(first + 1, second) as 'top' | 'bottom' | 'both';
+            return {
+              id: isNaN(parsedId) ? 0 : parsedId,
+              text: n.slice(second + 1),
+              position: ['top', 'bottom', 'both'].includes(pos) ? pos : 'top',
+            };
+          }
+          // Legacy format: "position:text"
           const colon = n.indexOf(':');
           const pos = n.slice(0, colon) as 'top' | 'bottom' | 'both';
-          return { text: n.slice(colon + 1), position: ['top', 'bottom', 'both'].includes(pos) ? pos : 'top' };
+          return { id: 0, text: n.slice(colon + 1), position: ['top', 'bottom', 'both'].includes(pos) ? pos : 'top' };
         }
-        return typeof n === 'string' ? { text: n, position: 'top' } : n;
+        return { id: 0, text: typeof n === 'string' ? n : '', position: 'top' };
       });
     }
     let restoredTools: ITool[] = [];
