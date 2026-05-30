@@ -130,7 +130,7 @@ export class ConfigPane {
   /**
    * onChange property.
    */
-  onChange: ((path: string, value: any, row?: ListRow) => void) | null = null;
+  onChange: ((path: string, value: unknown, row?: ListRow) => void) | null = null;
   /**
    * onAction property.
    */

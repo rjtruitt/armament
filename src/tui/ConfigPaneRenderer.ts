@@ -18,7 +18,7 @@ export interface ConfigPaneContext {
   getDetailConfig(): DetailConfig | undefined;
   panels: Map<string, { title?: string; items: MenuItem[] }>;
   onNavigate: ((target: string) => void) | null;
-  onChange: ((path: string, value: any, row?: ListRow) => void) | null;
+  onChange: ((path: string, value: unknown, row?: ListRow) => void) | null;
   onAction: ((action: string, rowId: string, panelId: string) => void) | null;
   markDirty(): void;
   toggleSort(columnKey: string): void;
@@ -289,7 +289,7 @@ function getActiveDetailRow(ctx: ConfigPaneContext): ListRow | undefined {
   return ctx.filteredRows[ctx.state.cursor];
 }
 
-function emitChange(ctx: ConfigPaneContext, fieldKey: string, value: any, row?: ListRow): void {
+function emitChange(ctx: ConfigPaneContext, fieldKey: string, value: unknown, row?: ListRow): void {
   if (!ctx.onChange) return;
   const panelId = ctx.currentPanelId;
   const rowId = row?.id ?? '';

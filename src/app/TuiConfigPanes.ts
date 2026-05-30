@@ -4,7 +4,7 @@ import { UserConfig } from '../config/index.js';
 import { registerConfigPanelSchemas } from './TuiConfigSchemas.js';
 import { getGlobalEventBus } from './EventBus.js';
 import type { IProviderConfig } from '../core/index.js';
-import type { MenuPanel } from '../tui/ConfigPane.js';
+import type { MenuPanel, ListRow } from '../tui/ConfigPane.js';
 import {
   registerSessionSchemas,
   registerContextSchemas,
@@ -100,12 +100,12 @@ export class TuiConfigPanes {
         rpm: '—',
         default: cfg.defaultModel === mName ? 'on' : 'off',
         // Hidden detail fields — populated so detail view shows current values
-        maxTokens: String((provider as any)[`model_${mName}_maxTokens`] ?? '∞'),
-        temperature: String((provider as any)[`model_${mName}_temperature`] ?? '1.0'),
-        topP: String((provider as any)[`model_${mName}_topP`] ?? '1.0'),
-        streaming: (provider as any)[`model_${mName}_streaming`] !== false ? 'on' : 'off',
-        caching: (provider as any)[`model_${mName}_caching`] !== false ? 'on' : 'off',
-        reasoningEffort: typeof m === 'object' && m.options ? (m.options as any).reasoning_effort ?? (m.options as any).output_config?.effort ?? '' : '',
+        maxTokens: String((provider as unknown as Record<string, unknown>)[`model_${mName}_maxTokens`] ?? '∞'),
+        temperature: String((provider as unknown as Record<string, unknown>)[`model_${mName}_temperature`] ?? '1.0'),
+        topP: String((provider as unknown as Record<string, unknown>)[`model_${mName}_topP`] ?? '1.0'),
+        streaming: (provider as unknown as Record<string, unknown>)[`model_${mName}_streaming`] !== false ? 'on' : 'off',
+        caching: (provider as unknown as Record<string, unknown>)[`model_${mName}_caching`] !== false ? 'on' : 'off',
+        reasoningEffort: typeof m === 'object' && m.options ? String((m.options as Record<string, unknown>)['reasoning_effort'] ?? ((m.options as Record<string, unknown>)['output_config'] as Record<string, unknown> | undefined)?.['effort'] ?? '') : '',
       },
       };
     });
@@ -181,7 +181,7 @@ export class TuiConfigPanes {
     if (paneId === 'history') registerHistorySchemas(pane);
   }
 
-  private handlePaneConfigChange(paneId: string, path: string, value: any): void {
+  private handlePaneConfigChange(paneId: string, path: string, value: unknown): void {
     const cfg = UserConfig.instance();
 
     // Provider detail field edits from the CRM list/detail view
@@ -196,10 +196,11 @@ export class TuiConfigPanes {
         fieldKey = fieldMap[fieldKey] ?? fieldKey;
         // Map summaryModel (detail view field name) to webpageSummarizationModel (config key)
         if (fieldKey === 'summaryModel') fieldKey = 'webpageSummarizationModel';
-        let coerced: any = value;
+        let coerced: string | number | boolean;
         if (value === 'on') coerced = true;
         else if (value === 'off') coerced = false;
         else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value)) coerced = Number(value);
+        else coerced = value as string;
         const providers = cfg.providers.map(p =>
           (p.name ?? p.type) === providerType ? { ...p, [fieldKey]: coerced } : p
         );
@@ -218,10 +219,11 @@ export class TuiConfigPanes {
         const providerType = providerModelMatch[1];
         const modelId = rowId;
         if (providerType) {
-          let coerced: any = value;
+          let coerced: string | number | boolean;
           if (value === 'on') coerced = true;
           else if (value === 'off') coerced = false;
           else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value)) coerced = Number(value);
+          else coerced = value as string;
 
           // Handle 'default' toggle: update the global defaultModel/defaultProvider
           if (fieldKey === 'default') {
@@ -240,7 +242,7 @@ export class TuiConfigPanes {
           const providers = cfg.providers.map(p => {
             if ((p.name ?? p.type) === providerType) {
               if (fieldKey === 'name' && coerced && coerced !== modelId) {
-                const models = (p.models || []).map(m => (typeof m === 'string' ? m : m.name) === modelId ? { ...(typeof m === 'string' ? { name: m } : m), name: coerced } : m);
+                const models = (p.models || []).map(m => (typeof m === 'string' ? m : m.name) === modelId ? { ...(typeof m === 'string' ? { name: m } : m), name: coerced as string } : m);
                 return { ...p, models };
               }
               if (fieldKey === 'reasoningEffort') {
@@ -251,10 +253,10 @@ export class TuiConfigPanes {
                   const current = typeof m === 'string' ? { name: m, options: {} } : { ...m };
                   if (!current.options) current.options = {};
                   if (!coerced) {
-                    delete (current.options as any).reasoning_effort;
+                    delete (current.options as Record<string, unknown>)['reasoning_effort'];
                     if (Object.keys(current.options).length === 0) delete current.options;
                   } else {
-                    (current.options as any).reasoning_effort = coerced;
+                    (current.options as Record<string, unknown>)['reasoning_effort'] = coerced;
                   }
                   return current;
                 });
@@ -268,9 +270,9 @@ export class TuiConfigPanes {
                   if (mName !== modelId) return m;
                   const current = typeof m === 'string' ? { name: m } : { ...m };
                   if (numVal === undefined || isNaN(numVal)) {
-                    delete (current as any)[priceKey];
+                    delete (current as Record<string, unknown>)[priceKey];
                   } else {
-                    (current as any)[priceKey] = numVal;
+                    (current as Record<string, unknown>)[priceKey] = numVal;
                   }
                   return current;
                 });
@@ -298,10 +300,11 @@ export class TuiConfigPanes {
       const serverName = mcpMatch[1];
       const fieldKey = mcpMatch[2];
       if (this.opts.onMcpConfigChange) {
-        let coerced: any = value;
+        let coerced: string | number | boolean;
         if (value === 'on') coerced = true;
         else if (value === 'off') coerced = false;
         else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value)) coerced = Number(value);
+        else coerced = value as string;
         this.opts.onMcpConfigChange(serverName, fieldKey, coerced);
       }
       return;
@@ -363,11 +366,12 @@ export class TuiConfigPanes {
 
     const cfgPath = configPathMap[path];
     if (cfgPath) {
-      let coerced: any = value;
+      let coerced: string | number | boolean;
       if (value === 'on') coerced = true;
       else if (value === 'off') coerced = false;
       else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value)) coerced = Number(value);
       else if (typeof value === 'string' && value.endsWith('m') && /^\d+m$/.test(value)) coerced = Number(value.slice(0, -1));
+      else coerced = value as string;
       cfg.setPath(cfgPath, coerced);
       // Refresh session pane rows after change so toggled values show immediately
       if (cfgPath.startsWith('session.') || cfgPath.startsWith('web.')) {
@@ -383,7 +387,7 @@ export class TuiConfigPanes {
     }
 
     if (cfgPath === 'display.theme') {
-      this.opts.theme = value;
+      this.opts.theme = value as string;
       this.delegate.render();
     }
     if (cfgPath === 'session.showThinkingInBuffer') {
@@ -426,9 +430,9 @@ export class TuiConfigPanes {
     } else if (action === 'd') {
       const providers = cfg.providers.filter(p => (p.name ?? p.type) !== rowId);
       cfg.set('providers', providers);
-      if (cfg.defaultProvider === rowId) cfg.set('defaultProvider', '' as any);
+      if (cfg.defaultProvider === rowId) cfg.set('defaultProvider', '');
       if (cfg.defaultModel && providers.every(p => !(p.models || []).some(m => (typeof m === 'string' ? m : m.name) === cfg.defaultModel!))) {
-        cfg.set('defaultModel', '' as any);
+        cfg.set('defaultModel', '');
         cfg.set('model', '');
       }
       this.refreshSchemas('providers');
@@ -472,13 +476,13 @@ export class TuiConfigPanes {
         while (existingNames.includes(newName)) {
           newName = `${type}-${suffix++}`;
         }
-        const newProvider: any = { type, name: newName, models: [] };
+        const newProvider = { type, name: newName, models: [] } as IProviderConfig;
         const providers = [...cfg.providers, newProvider];
         cfg.set('providers', providers);
         this.refreshSchemas('providers');
         pane.resetPanelStack('providers');
         const providerRows = pane.filteredRows;
-        const newIdx = providerRows.findIndex((r: any) => r.id === newName);
+        const newIdx = providerRows.findIndex((r: ListRow) => r.id === newName);
         pane.setCursor(newIdx >= 0 ? newIdx : 0);
         pane.onNavigate = prevNavigate;
         pane.openDetail();
@@ -542,7 +546,7 @@ export class TuiConfigPanes {
 
     const modelPane = this._configPanes.get(panelId);
     if (modelPane) {
-      const newIdx = modelPane.filteredRows.findIndex((r: any) => r.id === newModelName);
+      const newIdx = modelPane.filteredRows.findIndex((r: ListRow) => r.id === newModelName);
       if (newIdx >= 0) {
         modelPane.setCursor(newIdx);
         modelPane.openDetail();
@@ -573,7 +577,7 @@ export class TuiConfigPanes {
 
       const mcpPane = this._configPanes.get('mcp');
       if (mcpPane) {
-        const newIdx = mcpPane.filteredRows.findIndex((r: any) => r.id === name);
+        const newIdx = mcpPane.filteredRows.findIndex((r: ListRow) => r.id === name);
         if (newIdx >= 0) {
           mcpPane.setCursor(newIdx);
           mcpPane.openDetail();
