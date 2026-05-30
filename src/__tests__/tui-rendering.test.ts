@@ -3,7 +3,8 @@
 // input bar, status bar, borders, and themed colors across all themes.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TuiMode, TuiModeOptions } from '../app/TuiMode.js';
+import { TuiRenderer as TuiMode } from '../app/TuiRenderer.js';
+import type { TuiModeOptions } from '../app/TuiTypes.js';
 import { ScreenBuffer } from '../tui/ScreenBuffer.js';
 import { LayoutManager } from '../tui/LayoutManager.js';
 import { Sidebar } from '../tui/Sidebar.js';

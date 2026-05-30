@@ -18,19 +18,9 @@ import {
   WriteFileTool,
   AppendFileTool,
   GrepTool,
-  RipgrepTool,
 } from './BuiltinToolDefs.js';
 
-// Re-export tool classes from BuiltinToolDefs so existing consumers can still import from here
-export {
-  BashTool,
-  ReadFileTool,
-  EditFileTool,
-  WriteFileTool,
-  AppendFileTool,
-  GrepTool,
-  RipgrepTool,
-} from './BuiltinToolDefs.js';
+
 import { scopePath } from './BuiltinToolDefs.js';
 
 const MAX_OUTPUT_BYTES = 100_000;

@@ -545,55 +545,11 @@ export abstract class ReplPublicAPI extends BaseRepl {
    */
   showContextPicker(): void { this._contextManager.showContextPicker(); }
 
-  /**
-   * Add sticky note.
-   */
-  addStickyNote(content: string): void {
-    const note = this._sessionState.addStickyNote(content);
-    const channel = this.activeChannelName || '#control';
-    this.tuiMode?.writeMessage('system', 'info', `📝 Sticky #${note.id}: "${content}"`, channel);
-  }
-  /**
-   * Remove sticky note by id or index.
-   */
-  removeStickyNote(idOrIndex: string | number): void {
-    const channel = this.activeChannelName || '#control';
-    const notes = this._sessionState.stickyNotes;
-    let target: string;
-    if (typeof idOrIndex === 'number' && idOrIndex < notes.length) {
-      target = `#${notes[idOrIndex].id}`;
-    } else {
-      target = `#${idOrIndex}`;
-    }
-    const removed = this._sessionState.removeStickyNote(idOrIndex);
-    if (removed) {
-      this.tuiMode?.writeMessage('system', 'info', `🗑 Removed sticky ${target}`, channel);
-    } else {
-      this.tuiMode?.writeMessage('system', 'error', `Sticky ${target} not found — use /stickies to see IDs`, channel);
-    }
-  }
-  /**
-   * List sticky notes to the current channel.
-   */
-  listStickyNotes(): void {
-    const channel = this.activeChannelName || '#control';
-    const notes = this._sessionState.stickyNotes;
-    if (notes.length === 0) {
-      this.tuiMode?.writeMessage('system', 'info', 'No sticky notes set.', channel);
-      return;
-    }
-    this.tuiMode?.writeMessage('system', 'info', `📌 Sticky notes (${notes.length}):`, channel);
-    for (const n of notes) {
-      this.tuiMode?.writeMessage('system', 'info', `  #${n.id}: ${n.text}`, channel);
-    }
-  }
-  /**
-   * Gets the sticky notes.
-   */
-  getStickyNotes(): import('./SessionState.js').StickyNote[] { return this._sessionState.listStickyNotes(); }
-  /**
-   * Build sticky injection.
-   */
+  // Sticky note methods — implemented by ArmamentApp (per-channel stickies).
+  // These are abstract so any future ReplPublicAPI subclass must provide them.
+  abstract addStickyNote(content: string): void;
+  abstract removeStickyNote(idOrIndex: string | number): void;
+  abstract listStickyNotes(): void;
 
   /**
    * Add memory.

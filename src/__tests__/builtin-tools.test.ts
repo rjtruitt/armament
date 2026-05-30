@@ -13,9 +13,8 @@ import {
   WriteFileTool,
   AppendFileTool,
   GrepTool,
-  ListFilesTool,
-  getDefaultTools,
-} from '../providers/BuiltinTools.js';
+} from '../providers/BuiltinToolDefs.js';
+import { ListFilesTool, getDefaultTools } from '../providers/BuiltinTools.js';
 
 const ctx = { turnNumber: 1, state: {}, metadata: {} };
 
