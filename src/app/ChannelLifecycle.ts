@@ -188,6 +188,56 @@ export class ChannelLifecycle {
   /** Public accessor for the NudgeManager (used by /nudge REPL command via CommandContext). */
   getNudgeManager(): NudgeManager { return this._nudgeManager; }
 
+  /**
+   * Spawn a channel agent (threaded or non-threaded) and register it.
+   * Shared by both joinChannel and spawnChannelBackground.
+   * Calls onSuccess after the agent is created and registered, onError on failure.
+   * The ready promise is stored in channelReadyPromises internally.
+   */
+  private _spawnChannelAgent(
+    chName: string,
+    defaultProvider: any,
+    defaultModel: string,
+    onSuccess: () => void,
+    onError: (err: Error) => void,
+  ): void {
+    const useThreads = this.deps.config.session?.useThreads && this.deps.threadCoordinator;
+
+    if (useThreads && defaultProvider && defaultModel) {
+      const provType = defaultProvider.type ?? defaultProvider;
+      const model = defaultModel;
+      const threadConfig = this.buildThreadConfig(chName, provType, model, defaultProvider);
+      const coordinator = this.deps.threadCoordinator!;
+      const readyPromise = coordinator.spawnChannel(threadConfig).then(() => {
+        const handle = new ChannelThreadHandle(coordinator, chName, model, provType);
+        (handle as any).setWorkspace?.(getChannelRoot(chName) + ':/tmp:/dev');
+        this.channelAgents.set(chName, handle as unknown as ChannelAgent);
+        onSuccess();
+      }).catch(onError);
+      this.channelReadyPromises.set(chName, readyPromise);
+      return;
+    }
+
+    if (defaultProvider && defaultModel) {
+      const provType = defaultProvider.type ?? defaultProvider;
+      const model = defaultModel;
+      const readyPromise = this.deps.providerPool.getOrCreate(provType, model, {
+        region: defaultProvider.region,
+        profile: defaultProvider.profile,
+        apiKey: defaultProvider.apiKey,
+        baseURL: defaultProvider.baseUrl,
+        streaming: defaultProvider.streaming,
+        providerName: defaultProvider.name,
+      }).then((adapter) => {
+        const agent = this.createChannelAgent(chName, adapter, model, provType, defaultProvider.name);
+        agent.setWorkspace(getChannelRoot(chName) + ':/tmp:/dev');
+        this.channelAgents.set(chName, agent);
+        onSuccess();
+      }).catch(onError);
+      this.channelReadyPromises.set(chName, readyPromise);
+    }
+  }
+
   /** Create nudge tools, register store, and start recurring prompt for a channel.
    *  Shared by both threaded and non-threaded join paths. */
   private _setupChannelNudges(chName: string): void {
@@ -413,57 +463,25 @@ export class ChannelLifecycle {
     const useThreads = this.deps.config.session?.useThreads && this.deps.threadCoordinator;
     const defaultProvider = uc.providers?.[0] ?? this.deps.config.providers?.[0];
     const defaultModel = uc.defaultModel || this.deps.config.defaultModel;
-    if (useThreads && defaultProvider && defaultModel) {
-      const provType = defaultProvider.type ?? defaultProvider;
-      const model = defaultModel;
-      const threadConfig = this.buildThreadConfig(chName, provType, model, defaultProvider);
-      const coordinator = this.deps.threadCoordinator!;
-      const readyPromise = coordinator.spawnChannel(threadConfig).then(() => {
-        const handle = new ChannelThreadHandle(coordinator, chName, model, provType);
-        this.channelAgents.set(chName, handle as unknown as ChannelAgent);
-        // Create a nudge store for this threaded channel so core-nudges.md gets loaded
+
+    this._spawnChannelAgent(chName, defaultProvider, defaultModel,
+      () => {
         this._setupChannelNudges(chName);
         this.deps.refreshProviderStats();
-        this.deps.callbacks.writeMessage('system', '*', `Connected to ${provType} (${model}) [threaded]`);
+        const agent = this.channelAgents.get(chName);
+        const label = agent ? `${agent.providerType}/${agent.model}` : '?';
+        const prefix = useThreads ? `${label} [threaded]` : `${label}`;
+        this.deps.callbacks.writeMessage('system', '*', `Connected to ${prefix}`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
         this.deps.callbacks.stopThinking(chName);
-        this.deps.callbacks.writeMessage('system', 'conn', `${chName} thread spawned → ${provType}/${model}`, '#logs');
-      }).catch((err: Error) => {
-        this.deps.callbacks.writeMessage('system', 'error', `Failed to spawn thread: ${err.message}`);
-        this.deps.callbacks.writeMessage('system', 'err', `${chName} thread failed: ${err.message}`, '#logs');
-      });
-      this.channelReadyPromises.set(chName, readyPromise);
-      this._notifyChannelsUpdated();
-      return name;
-    }
-
-    if (defaultProvider && defaultModel) {
-      const provType = defaultProvider.type ?? defaultProvider;
-      const model = defaultModel;
-      const readyPromise = this.deps.providerPool.getOrCreate(provType, model, {
-        region: defaultProvider.region,
-        profile: defaultProvider.profile,
-        apiKey: defaultProvider.apiKey,
-        baseURL: defaultProvider.baseUrl,
-        streaming: defaultProvider.streaming,
-        providerName: defaultProvider.name,
-      }).then((adapter) => {
-        const agent = this.createChannelAgent(chName, adapter, model, provType, defaultProvider.name);
-        agent.setWorkspace(getChannelRoot(chName) + ':/tmp:/dev');
-        this.channelAgents.set(chName, agent);
-        // Create nudge store for non-threaded channel
-        this._setupChannelNudges(chName);
-        this.deps.callbacks.writeMessage('system', '*', `Connected to ${defaultProvider.name ?? provType} (${model})`);
-        this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
-        this.deps.callbacks.stopThinking(chName);
-        this.deps.callbacks.writeMessage('system', 'conn', `${chName} connected → ${provType}/${model}`, '#logs');
-      }).catch((err: Error) => {
-        this.deps.callbacks.writeMessage('system', '*', `Failed to connect: ${err.message}`);
-        this.deps.callbacks.writeMessage('system', 'err',
-          `${chName} connection failed: ${err.message}`, '#logs');
-      });
-      this.channelReadyPromises.set(chName, readyPromise);
-    }
+        this.deps.callbacks.writeMessage('system', 'conn', `${chName} connected → ${label}`, '#logs');
+      },
+      (err: Error) => {
+        const msg = useThreads ? `Failed to spawn thread: ${err.message}` : `Failed to connect: ${err.message}`;
+        this.deps.callbacks.writeMessage('system', 'error', msg);
+        this.deps.callbacks.writeMessage('system', 'err', `${chName} ${useThreads ? 'thread' : 'connection'} failed: ${err.message}`, '#logs');
+      },
+    );
 
     this._notifyChannelsUpdated();
     return name;
@@ -482,43 +500,13 @@ export class ChannelLifecycle {
     this.ensureChannelNotes(chName);
 
     const uc = UserConfig.instance();
-    const useThreads = this.deps.config.session?.useThreads && this.deps.threadCoordinator;
     const defaultProvider = uc.providers?.[0] ?? this.deps.config.providers?.[0];
     const defaultModel = uc.defaultModel || this.deps.config.defaultModel;
-    if (useThreads && defaultProvider && defaultModel) {
-      const provType = defaultProvider.type ?? defaultProvider;
-      const model = defaultModel;
-      const threadConfig = this.buildThreadConfig(chName, provType, model, defaultProvider);
-      const coordinator = this.deps.threadCoordinator!;
-      const readyPromise = coordinator.spawnChannel(threadConfig).then(() => {
-        const handle = new ChannelThreadHandle(coordinator, chName, model, provType);
-        (handle as any).setWorkspace?.(getChannelRoot(chName) + ':/tmp:/dev');
-        this.channelAgents.set(chName, handle as unknown as ChannelAgent);
-        this.deps.refreshProviderStats();
-      }).catch(() => {});
-      this.channelReadyPromises.set(chName, readyPromise);
-      this._notifyChannelsUpdated();
-      return chName;
-    }
 
-    if (defaultProvider && defaultModel) {
-      const provType = defaultProvider.type ?? defaultProvider;
-      const model = defaultModel;
-      const readyPromise = this.deps.providerPool.getOrCreate(provType, model, {
-        region: defaultProvider.region,
-        profile: defaultProvider.profile,
-        apiKey: defaultProvider.apiKey,
-        baseURL: defaultProvider.baseUrl,
-        streaming: defaultProvider.streaming,
-        providerName: defaultProvider.name,
-      }).then((adapter) => {
-        const agent = this.createChannelAgent(chName, adapter, model, provType, defaultProvider.name);
-        agent.setWorkspace(getChannelRoot(chName) + ':/tmp:/dev');
-        this.channelAgents.set(chName, agent);
-        this.deps.refreshProviderStats();
-      }).catch(() => {});
-      this.channelReadyPromises.set(chName, readyPromise);
-    }
+    this._spawnChannelAgent(chName, defaultProvider, defaultModel,
+      () => { this.deps.refreshProviderStats(); },
+      () => {},
+    );
 
     this._notifyChannelsUpdated();
     return name;
