@@ -100,16 +100,6 @@ export class McpIntegration {
   }
 
   /**
-   * Simulate mcp crash.
-   */
-  simulateMcpCrash(serverName: string): void {
-    const server = this.mcpServers.get(serverName);
-    if (server) {
-      server.status = 'crashed';
-    }
-  }
-
-  /**
    * Format mcp status.
    */
   formatMcpStatus(args: string[]): string {

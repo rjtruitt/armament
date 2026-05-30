@@ -257,10 +257,6 @@ export abstract class ReplPublicAPI extends BaseRepl {
    */
   getMcpStatus(serverName: string): string { return this._mcpIntegration.getMcpServerStatus(serverName); }
   /**
-   * Simulate mcp crash.
-   */
-  simulateMcpCrash(serverName: string): void { this._mcpIntegration.simulateMcpCrash(serverName); }
-  /**
    * Format mcp status.
    */
   formatMcpStatus(args: string[]): string { return this._mcpIntegration.formatMcpStatus(args); }
@@ -334,14 +330,7 @@ export abstract class ReplPublicAPI extends BaseRepl {
    * Update status line.
    */
   updateStatusLine(): void {}
-  /**
-   * Approve permission.
-   */
-  approvePermission(): void {}
-  /**
-   * Deny permission.
-   */
-  denyPermission(): void {}
+
   /**
    * Sets the agent loop.
    */

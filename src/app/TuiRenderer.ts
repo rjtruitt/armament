@@ -597,4 +597,3 @@ export class TuiRenderer {
   }
 }
 
-export { TuiRenderer as TuiMode };
