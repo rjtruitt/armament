@@ -371,20 +371,22 @@ export class ArmamentApp extends ReplPublicAPI {
     } finally {
       state.processing = false;
       const finishedChannel = channel;
+      if (this.tuiMode && finishedChannel) {
+        this.tuiMode.stopThinking(finishedChannel);
+      }
+      abortBashProcess(finishedChannel);
       if (state.interrupted) {
         // User hit Ctrl+C — stop the current operation, flush staging (discard)
         if (this.tuiMode && finishedChannel) {
           this.tuiMode.flushStaging(finishedChannel);
         }
-        // Reset interrupt flag so drainInputQueue can process queued messages
         state.interrupted = false;
       } else if (this.tuiMode && finishedChannel && this.tuiMode.hasStaging(finishedChannel)) {
         this.tuiMode.flushStaging(finishedChannel);
       }
-      // Drain any queued messages for this channel
-      if (finishedChannel && this._inputQueue.length > 0) {
-        drainInputQueue(finishedChannel, (msg, ch) => this._processMessage(msg, ch), this._inputProcessorDeps()).catch(() => {});
-      }
+      // Note: drainInputQueue is called by handleInput(), not here.
+      // Having it here as a fire-and-forget raced with handleInput's drain,
+      // causing silent error swallowing and random loop exits.
     }
   }
 
