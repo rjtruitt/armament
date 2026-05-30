@@ -254,6 +254,9 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
   const { tool: todoTool } = createTodoTool((rendered) => {
     deps.callbacks.writeMessage('system', 'todo', rendered, chName);
   });
+  // Track pending nudges that were skipped due to idle state
+  let pendingNudge: string | null = null;
+
   const nudgeResult = createNudgeTools((prompt, jobId, hidden) => {
     if (!hidden) {
       deps.callbacks.writeMessage('system', 'info', `[sched:${jobId}] ${prompt}`, chName);
@@ -264,6 +267,13 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       if (agent.hasPendingInjection(prompt)) return;
       agent.injectMessage(prompt);
     }
+  }, {
+    // Skip nudge when agent is idle — fire only when channel is active
+    idleCheck: () => {
+      const agent = channelAgents.get(chName);
+      const isIdle = agent ? agent.status === 'idle' : true;
+      return !isIdle; // true = fire (agent is active), false = skip (agent is idle)
+    },
   });
   ctx.setScheduleStore(nudgeResult.store);
   const planTools = createPlanModeTools({
