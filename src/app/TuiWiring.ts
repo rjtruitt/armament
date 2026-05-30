@@ -244,31 +244,7 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
 
   const manifest = await deps.sessionPersistence.loadManifest();
   if (manifest) {
-    if (manifest.stickyNotes) {
-      let nextLegacyId = 1;
-      deps.sessionState.stickyNotes = manifest.stickyNotes.map((n: any) => {
-        if (typeof n === 'string') {
-          // New format: "id:position:text" — extract id, position, text
-          const first = n.indexOf(':');
-          const second = n.indexOf(':', first + 1);
-          if (first !== -1 && second !== -1) {
-            const parsedId = parseInt(n.slice(0, first), 10);
-            const pos = n.slice(first + 1, second) as 'top' | 'bottom' | 'both';
-            if (!isNaN(parsedId) && parsedId >= nextLegacyId) nextLegacyId = parsedId + 1;
-            return {
-              id: isNaN(parsedId) ? 0 : parsedId,
-              text: n.slice(second + 1),
-              position: ['top', 'bottom', 'both'].includes(pos) ? pos : 'top',
-            };
-          }
-          // Legacy format: "position:text" — assign sequential ID
-          const colon = n.indexOf(':');
-          const pos = n.slice(0, colon) as 'top' | 'bottom' | 'both';
-          return { id: nextLegacyId++, text: n.slice(colon + 1), position: ['top', 'bottom', 'both'].includes(pos) ? pos : 'top' };
-        }
-        return { id: nextLegacyId++, text: typeof n === 'string' ? n : '', position: 'top' };
-      });
-    }
+    // Sticky notes are now per-channel — global stickies from old manifests are dropped.
     let restoredTools: ITool[] = [];
     if (manifest.activeTools) {
       restoredTools = deps.catalogManager.restoreTools(manifest.activeTools);

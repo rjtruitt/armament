@@ -170,7 +170,7 @@ export class SessionBridge {
       activeChannel: this.activeChannel,
       channels,
       globalConfig: {},
-      stickyNotes: [],
+      stickyNotes: {},
       activeTools: [],
     };
   }

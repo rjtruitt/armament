@@ -18,7 +18,7 @@ import { createAppServices, type AppServices } from './createAppServices.js';
 import { buildCommandContext, type CommandContextHost } from './CommandContextBuilder.js';
 import {
   processSlashCommand, handleApprovalResponse, resolveChannelApproval,
-  tryQueueMessage, drainInputQueue, type QueuedMessage,
+  tryQueueMessage, type QueuedMessage,
 } from './InputProcessor.js';
 import {
   refreshProviderStats as doRefreshProviderStats,
@@ -39,6 +39,9 @@ export class ArmamentApp extends ReplPublicAPI {
   private _inputQueue: (string | { text: string; channel: string })[] = [];
   /** Per-channel processing state — allows multiple channels to be active simultaneously. */
   private _channelStates = new Map<string, { processing: boolean; interrupted: boolean; interruptCount: number }>();
+  /** Per-channel sticky notes. */
+  private _channelStickies = new Map<string, Array<{ id: number; text: string; position: 'top' | 'bottom' | 'both' }>>();
+  private _channelStickyId = new Map<string, number>();
   private _streamRouter!: StreamRouter;
   private _flowRuntime!: FlowRuntime;
   private _agentServices!: AgentServices;
@@ -239,24 +242,7 @@ export class ArmamentApp extends ReplPublicAPI {
       resumeChannel: (entry, state) => this._resumeChannel(entry, state),
       handleInput: (text) => this.handleInput(text),
       stop: () => this.stop(),
-      interrupt: () => {
-        const ch = this.activeChannelName;
-        if (ch) {
-          const state = this.getChannelState(ch);
-          state.interrupted = true;
-          state.interruptCount++;
-        }
-        // Also set BaseRepl's singleton flag for wasInterrupted()
-        this.interrupted = true;
-        if (ch && this._threadCoordinator) this._threadCoordinator.interrupt(ch);
-        if (ch) abortBashProcess(ch);
-        if (ch) this._channelAgents.get(ch)?.interrupt();
-        this.tuiMode?.stopThinking(ch);
-        this.tuiMode?.writeMessage('system', '*', '── interrupted ──', this.activeChannelName);
-        if ((this.getChannelState(this.activeChannelName ?? '').interruptCount) >= 2 && !this.getChannelProcessing(this.activeChannelName)) {
-          this.running = false;
-        }
-      },
+      interrupt: () => this.interrupt(),
       isProcessing: () => this.getChannelProcessing(this.activeChannelName),
       formatPrompt: () => this.formatPrompt(),
       getAvailableModels: () => this.getAvailableModels(),
@@ -308,7 +294,11 @@ export class ArmamentApp extends ReplPublicAPI {
         globalConfig: {
           mcpServers: [...this.mcpServers.entries()].map(([name, s]) => ({ name, config: s.config })),
         },
-        stickyNotes: this._sessionState.stickyNotes.map(n => `${n.id}:${n.position}:${n.text}`),
+        stickyNotes: Object.fromEntries(
+          [...this._channelStickies.entries()].map(([ch, notes]) =>
+            [ch, notes.map(n => `${n.id}:${n.position}:${n.text}`)]
+          )
+        ),
         activeTools: this._activeToolNames,
       }).catch(() => {});
     }
@@ -324,9 +314,34 @@ export class ArmamentApp extends ReplPublicAPI {
   }
 
 
-  /**
-   * Handle input.
-   */
+  /** Handle Ctrl+C interrupt. Stops the current agent turn cleanly. */
+  interrupt(): void {
+    const ch = this.activeChannelName;
+    // Always set singleton flags (needed by tests and wasInterrupted())
+    this.interrupted = true;
+    this.interruptCount++;
+    this.emitEvent('interrupt', {});
+    if (!ch) {
+      // No active channel — use singleton counters for double-escape
+      if (this.interruptCount >= 2 && !(this as any).processing) this.running = false;
+      return;
+    }
+    const state = this.getChannelState(ch);
+    state.interrupted = true;
+    state.interruptCount++;
+    // Kill everything mid-flight
+    if (this._threadCoordinator) this._threadCoordinator.interrupt(ch);
+    abortBashProcess(ch);
+    this._channelAgents.get(ch)?.interrupt();
+    this.tuiMode?.stopThinking(ch);
+    this.tuiMode?.writeMessage('system', '*', '── interrupted ──', ch);
+    // Double-escape exits
+    if (state.interruptCount >= 2 && !state.processing) {
+      this.running = false;
+    }
+  }
+
+  /** Entry point: user typed a message. Queues if busy, processes immediately if idle. */
   async handleInput(input: string): Promise<void> {
     const trimmed = input.trim();
     if (!trimmed) return;
@@ -338,56 +353,159 @@ export class ArmamentApp extends ReplPublicAPI {
       return;
     }
 
-    const currentChannel = this.tuiMode?.getActiveChannel();
-    if (currentChannel && tryQueueMessage(trimmed, currentChannel, this._inputProcessorDeps())) return;
+    const channel = this.tuiMode?.getActiveChannel() ?? '#general';
 
-    await this._processMessage(trimmed, currentChannel);
-    if (currentChannel) {
-      await drainInputQueue(currentChannel, (msg, ch) => this._processMessage(msg, ch), this._inputProcessorDeps());
+    // If this channel is already processing, queue and return
+    if (tryQueueMessage(trimmed, channel, this._inputProcessorDeps())) return;
+
+    // Process now, then drain any queued messages for this channel
+    await this._processMessage(trimmed, channel);
+    await this._drainChannelQueue(channel);
+  }
+
+  /** Process exactly one message. Called by handleInput and _drainChannelQueue. */
+  private async _processMessage(text: string, channel: string): Promise<void> {
+    const state = this._beginProcessing(channel);
+    try {
+      if (channel === '#approvals' && this._pendingApprovals.size > 0) {
+        handleApprovalResponse(text, this._inputProcessorDeps());
+        return;
+      }
+      resolveChannelApproval(text, channel, this._inputProcessorDeps());
+      if (this.tuiMode) this.tuiMode.writeMessage('user', this.getUserNick(), text, channel);
+      const response = await this.handleUserMessage(text);
+      if (response) {
+        if (this.tuiMode) this.tuiMode.writeMessage('agent', this.getAgentNick(), response, channel);
+        else process.stdout.write(response + '\n');
+      }
+    } finally {
+      this._endProcessing(channel, state);
     }
   }
 
-  private async _processMessage(trimmed: string, targetChannel?: string): Promise<void> {
-    const channel = targetChannel || this.tuiMode?.getActiveChannel() || '';
+  /** Drain all queued messages for the given channel. Runs sequentially. */
+  private async _drainChannelQueue(channel: string): Promise<void> {
+    const queue = this._inputQueue;
+    const remaining: (string | { text: string; channel: string })[] = [];
+    while (queue.length > 0) {
+      const entry = queue.shift()!;
+      const text = typeof entry === 'string' ? entry : (entry as { text: string; channel: string }).text;
+      const entryChannel = typeof entry === 'string' ? undefined : (entry as { text: string; channel: string }).channel;
+      if (entryChannel !== undefined && entryChannel !== channel) {
+        remaining.push(entry);
+      } else {
+        await this._processMessage(text, entryChannel ?? channel);
+      }
+    }
+    for (const entry of remaining) queue.push(entry);
+  }
+
+  /** Begin processing: set flags, reset interrupt state. */
+  private _beginProcessing(channel: string): { processing: boolean; interrupted: boolean; interruptCount: number } {
     const state = this.getChannelState(channel);
     state.processing = true;
     state.interrupted = false;
     state.interruptCount = 0;
     this.interrupted = false;
+    return state;
+  }
 
-    try {
-      if (channel === '#approvals' && this._pendingApprovals.size > 0) {
-        handleApprovalResponse(trimmed, this._inputProcessorDeps());
-        return;
-      }
-      if (channel) resolveChannelApproval(trimmed, channel, this._inputProcessorDeps());
-      if (this.tuiMode) this.tuiMode.writeMessage('user', this.getUserNick(), trimmed, channel);
-      const response = await this.handleUserMessage(trimmed);
-      if (response) {
-        if (this.tuiMode) this.tuiMode.writeMessage('agent', this.getAgentNick(), response, channel);
-        else process.stdout.write(response + '\n');
-      }
-      // After first successful message
-    } finally {
-      state.processing = false;
-      const finishedChannel = channel;
-      if (this.tuiMode && finishedChannel) {
-        this.tuiMode.stopThinking(finishedChannel);
-      }
-      abortBashProcess(finishedChannel);
-      if (state.interrupted) {
-        // User hit Ctrl+C — stop the current operation, flush staging (discard)
-        if (this.tuiMode && finishedChannel) {
-          this.tuiMode.flushStaging(finishedChannel);
-        }
-        state.interrupted = false;
-      } else if (this.tuiMode && finishedChannel && this.tuiMode.hasStaging(finishedChannel)) {
-        this.tuiMode.flushStaging(finishedChannel);
-      }
-      // Note: drainInputQueue is called by handleInput(), not here.
-      // Having it here as a fire-and-forget raced with handleInput's drain,
-      // causing silent error swallowing and random loop exits.
+  /** End processing: cleanup flags, stop thinking, abort bash, flush staging. */
+  private _endProcessing(channel: string, state: { processing: boolean; interrupted: boolean; interruptCount: number }): void {
+    state.processing = false;
+    this.tuiMode?.stopThinking(channel);
+    abortBashProcess(channel);
+    if (state.interrupted) {
+      this.tuiMode?.flushStaging(channel);
+      state.interrupted = false;
+    } else if (this.tuiMode?.hasStaging(channel)) {
+      this.tuiMode.flushStaging(channel);
     }
+  }
+
+  // ─── Per-channel sticky notes ─────────────────────────────────────────────
+
+  private _getChannelStickies(channel: string): Array<{ id: number; text: string; position: 'top' | 'bottom' | 'both' }> {
+    let stickies = this._channelStickies.get(channel);
+    if (!stickies) {
+      stickies = [];
+      this._channelStickies.set(channel, stickies);
+    }
+    return stickies;
+  }
+
+  private _nextStickyId(channel: string): number {
+    const id = (this._channelStickyId.get(channel) ?? 0) + 1;
+    this._channelStickyId.set(channel, id);
+    return id;
+  }
+
+  /** Override: add sticky note for the current channel. */
+  override addStickyNote(content: string): void {
+    const channel = this.activeChannelName || '#general';
+    const stickies = this._getChannelStickies(channel);
+    const note = { id: this._nextStickyId(channel), text: content, position: 'top' as const };
+    stickies.push(note);
+    this.tuiMode?.writeMessage('system', 'info', `📝 Sticky #${note.id}: "${content}"`, channel);
+  }
+
+  /** Override: remove sticky note from the current channel. */
+  override removeStickyNote(idOrIndex: string | number): void {
+    const channel = this.activeChannelName || '#general';
+    const stickies = this._getChannelStickies(channel);
+    let removed = false;
+    let target = '';
+    if (typeof idOrIndex === 'string') {
+      const id = parseInt(idOrIndex, 10);
+      if (!isNaN(id)) {
+        const idx = stickies.findIndex(n => n.id === id);
+        if (idx !== -1) { target = `#${id}`; stickies.splice(idx, 1); removed = true; }
+      }
+    } else if (typeof idOrIndex === 'number' && idOrIndex < stickies.length) {
+      target = `#${stickies[idOrIndex].id}`;
+      stickies.splice(idOrIndex, 1);
+      removed = true;
+    }
+    if (removed) {
+      this.tuiMode?.writeMessage('system', 'info', `🗑 Removed sticky ${target}`, channel);
+    } else {
+      this.tuiMode?.writeMessage('system', 'error', `Sticky ${target || `#${idOrIndex}`} not found — use /stickies to see IDs`, channel);
+    }
+  }
+
+  /** Override: list sticky notes for the current channel. */
+  override listStickyNotes(): void {
+    const channel = this.activeChannelName || '#general';
+    const stickies = this._getChannelStickies(channel);
+    if (stickies.length === 0) {
+      this.tuiMode?.writeMessage('system', 'info', 'No sticky notes set.', channel);
+      return;
+    }
+    this.tuiMode?.writeMessage('system', 'info', `📌 Sticky notes (${stickies.length}):`, channel);
+    for (const n of stickies) {
+      this.tuiMode?.writeMessage('system', 'info', `  #${n.id}: ${n.text}`, channel);
+    }
+  }
+
+  /** Build sticky injection for a specific channel. */
+  buildStickyInjectionForChannel(channel: string): string {
+    const stickies = this._getChannelStickies(channel);
+    if (stickies.length === 0) return '';
+    const top: string[] = [];
+    const bottom: string[] = [];
+    for (const n of stickies) {
+      if (n.position === 'top' || n.position === 'both') top.push(`- ${n.text}`);
+      if (n.position === 'bottom' || n.position === 'both') bottom.push(`- ${n.text}`);
+    }
+    const parts: string[] = [];
+    if (top.length > 0) parts.push(`[Persistent reminders — appended to every message you receive]\n${top.join('\n')}\n[End reminders]`);
+    if (bottom.length > 0) parts.push(`[Persistent reminders — appended to every message you receive]\n${bottom.join('\n')}\n[End reminders]`);
+    return parts.join('\n\n');
+  }
+
+  /** Override: build sticky injection for the current channel. */
+  override buildStickyInjection(): string {
+    return this.buildStickyInjectionForChannel(this.activeChannelName || '#general');
   }
 
 
@@ -610,7 +728,7 @@ export class ArmamentApp extends ReplPublicAPI {
       handlePluginCommand: (args) => { this.handlePluginCommand(args); },
       injectPluginContext: (commandName, content, args) => this.injectPluginContext(commandName, content, args),
       connectMcp: (name, config) => this.connectMcp(name, config),
-      submitMessage: (content, channel) => this._processMessage(content, channel),
+      submitMessage: (content, channel) => { if (channel) return this._processMessage(content, channel); return Promise.resolve(); },
     };
     return buildCommandContext(host);
   }
@@ -679,9 +797,9 @@ export class ArmamentApp extends ReplPublicAPI {
       getUsageStats: () => this.usageStats,
       getCurrentModel: () => this.getCurrentModel(),
       getActiveProvider: () => this.getActiveProvider(),
-      buildStickyInjection: () => this.buildStickyInjection(),
-      buildStickyInjectionTop: () => this.buildStickyInjection(),
-      buildStickyInjectionBottom: () => this._sessionState.buildStickyInjectionBottom(),
+      buildStickyInjection: (channel) => this.buildStickyInjectionForChannel(channel),
+      buildStickyInjectionTop: (channel) => this.buildStickyInjectionForChannel(channel),
+      buildStickyInjectionBottom: (channel) => this.buildStickyInjectionForChannel(channel),
       buildArmadebugInjection: () => this._sessionState.buildArmadebugInjection(),
       getChannelNotes: (channel) => this._channelLifecycle.getChannelNotes(channel),
       getAgentNick: () => this.getAgentNick(),

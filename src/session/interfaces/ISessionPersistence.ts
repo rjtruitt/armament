@@ -16,7 +16,7 @@ export interface ISessionManifest {
   activeChannel?: string;
   channels: IChannelManifestEntry[];
   globalConfig: Record<string, unknown>;
-  stickyNotes: string[];
+  stickyNotes: Record<string, string[]>;
   activeTools: string[];
 }
 /** Summary entry for a channel within the session manifest. */

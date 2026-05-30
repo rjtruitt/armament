@@ -34,9 +34,9 @@ export interface MessageHandlerDeps {
   getUsageStats: () => IUsageStats;
   getCurrentModel: () => string;
   getActiveProvider: () => string;
-  buildStickyInjection: () => string;
-  buildStickyInjectionTop: () => string;
-  buildStickyInjectionBottom: () => string;
+  buildStickyInjection: (channel: string) => string;
+  buildStickyInjectionTop: (channel: string) => string;
+  buildStickyInjectionBottom: (channel: string) => string;
   buildArmadebugInjection: () => string;
   getChannelNotes: (channel: string) => string;
   getAgentNick: () => string;
@@ -105,8 +105,8 @@ export async function handleUserMessage(
   if (agent) {
     try {
       const notesPrefix = deps.getChannelNotes(activeChannel);
-      const stickyPre = deps.buildStickyInjectionTop();
-      const stickyPost = deps.buildStickyInjectionBottom();
+      const stickyPre = deps.buildStickyInjectionTop(activeChannel);
+      const stickyPost = deps.buildStickyInjectionBottom(activeChannel);
       const armadebug = deps.buildArmadebugInjection();
       const augmentedInput = `${notesPrefix}${stickyPre}${armadebug}[USER MESSAGE]\n${input}${stickyPost}`;
       const nick = deps.getAgentNick();
