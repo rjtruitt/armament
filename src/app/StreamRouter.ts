@@ -253,27 +253,42 @@ export class StreamRouter {
             await new Promise(r => setImmediate(r));
             const queue = this.deps.getInputQueue();
             if (queue.length > 0) {
-              tui?.flushStaging(target.channel);
-              const drained: (string | { text: string; channel: string })[] = [];
-              const remaining: (string | { text: string; channel: string })[] = [];
-              while (queue.length > 0) {
-                const entry = queue.shift()!;
-                const entryChannel = typeof entry === 'string' ? undefined : entry.channel;
-                // Only drain messages for the current channel — requeue others
-                if (entryChannel !== undefined && entryChannel !== target.channel) {
-                  remaining.push(entry);
-                } else {
-                  drained.push(entry);
+              // If the user hit Ctrl+C, don't drain the queue — discard pending messages
+              if (interrupted?.()) {
+                const remaining: (string | { text: string; channel: string })[] = [];
+                while (queue.length > 0) {
+                  const entry = queue.shift()!;
+                  const entryChannel = typeof entry === 'string' ? undefined : (entry as { text: string; channel: string }).channel;
+                  // Keep messages for OTHER channels, drop for this channel
+                  if (entryChannel !== undefined && entryChannel !== target.channel) {
+                    remaining.push(entry);
+                  }
                 }
-              }
-              for (const item of drained) {
-                const injected = typeof item === 'string' ? item : item.text;
-                tui?.writeMessage('user', this.deps.getUserNick(), injected, target.channel);
-                agent.injectMessage(injected);
-              }
-              // Put back messages for other channels
-              for (const entry of remaining) {
-                queue.push(entry);
+                for (const entry of remaining) queue.push(entry);
+                tui?.flushStaging(target.channel);
+              } else {
+                tui?.flushStaging(target.channel);
+                const drained: (string | { text: string; channel: string })[] = [];
+                const remaining: (string | { text: string; channel: string })[] = [];
+                while (queue.length > 0) {
+                  const entry = queue.shift()!;
+                  const entryChannel = typeof entry === 'string' ? undefined : (entry as { text: string; channel: string }).channel;
+                  // Only drain messages for the current channel — requeue others
+                  if (entryChannel !== undefined && entryChannel !== target.channel) {
+                    remaining.push(entry);
+                  } else {
+                    drained.push(entry);
+                  }
+                }
+                for (const item of drained) {
+                  const injected = typeof item === 'string' ? item : (item as { text: string; channel: string }).text;
+                  tui?.writeMessage('user', this.deps.getUserNick(), injected, target.channel);
+                  agent.injectMessage(injected);
+                }
+                // Put back messages for other channels
+                for (const entry of remaining) {
+                  queue.push(entry);
+                }
               }
             }
           }
