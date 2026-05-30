@@ -188,6 +188,27 @@ export class ChannelLifecycle {
   /** Public accessor for the NudgeManager (used by /nudge REPL command via CommandContext). */
   getNudgeManager(): NudgeManager { return this._nudgeManager; }
 
+  /** Create nudge tools, register store, and start recurring prompt for a channel.
+   *  Shared by both threaded and non-threaded join paths. */
+  private _setupChannelNudges(chName: string): void {
+    const nudgeResult = createNudgeTools((prompt, _jobId, hidden) => {
+      if (!hidden) {
+        this.deps.callbacks.writeMessage('system', 'info', `[nudge] ${prompt}`, chName);
+      }
+      const a = this.channelAgents.get(chName);
+      if (a) {
+        if (a.status === 'idle') {
+          (async () => { for await (const _ of a.sendMessageStreaming(prompt)) {} })().catch(e =>
+            this.deps.callbacks.writeMessage('system', 'err', `Stream error: ${e.message}`, chName));
+        } else {
+          a.injectMessage(prompt);
+        }
+      }
+    }, { idleCheck: () => this.channelAgents.get(chName)?.status === 'idle' });
+    this._nudgeManager.registerStore(chName, nudgeResult.store);
+    this._manageRecurringPrompt(chName);
+  }
+
   /**
    * Start or update the recurring prompt for a channel.
    * Reads .armaws/reminder_prompt.md and creates a recurring nudge job via ScheduledPrompt.
@@ -401,21 +422,7 @@ export class ChannelLifecycle {
         const handle = new ChannelThreadHandle(coordinator, chName, model, provType);
         this.channelAgents.set(chName, handle as unknown as ChannelAgent);
         // Create a nudge store for this threaded channel so core-nudges.md gets loaded
-        const nudgeResult = createNudgeTools((prompt, _jobId, hidden) => {
-          if (!hidden) {
-            this.deps.callbacks.writeMessage('system', 'info', `[nudge] ${prompt}`, chName);
-          }
-          const agent = this.channelAgents.get(chName);
-          if (agent) {
-            if (agent.status === 'idle') {
-              (async () => { for await (const _ of agent.sendMessageStreaming(prompt)) {} })().catch(e => this.deps.callbacks.writeMessage('system', 'err', `Stream error: ${e.message}`, chName));
-            } else {
-              agent.injectMessage(prompt);
-            }
-          }
-        }, { idleCheck: () => this.channelAgents.get(chName)?.status === 'idle' });
-        this._nudgeManager.registerStore(chName, nudgeResult.store);
-        this._manageRecurringPrompt(chName);
+        this._setupChannelNudges(chName);
         this.deps.refreshProviderStats();
         this.deps.callbacks.writeMessage('system', '*', `Connected to ${provType} (${model}) [threaded]`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
@@ -445,21 +452,7 @@ export class ChannelLifecycle {
         agent.setWorkspace(getChannelRoot(chName) + ':/tmp:/dev');
         this.channelAgents.set(chName, agent);
         // Create nudge store for non-threaded channel
-        const nudgeResult = createNudgeTools((prompt, _jobId, hidden) => {
-          if (!hidden) {
-            this.deps.callbacks.writeMessage('system', 'info', `[nudge] ${prompt}`, chName);
-          }
-          const a = this.channelAgents.get(chName);
-          if (a) {
-            if (a.status === 'idle') {
-              (async () => { for await (const _ of a.sendMessageStreaming(prompt)) {} })().catch(e => this.deps.callbacks.writeMessage('system', 'err', `Stream error: ${e.message}`, chName));
-            } else {
-              a.injectMessage(prompt);
-            }
-          }
-        }, { idleCheck: () => this.channelAgents.get(chName)?.status === 'idle' });
-        this._nudgeManager.registerStore(chName, nudgeResult.store);
-        this._manageRecurringPrompt(chName);
+        this._setupChannelNudges(chName);
         this.deps.callbacks.writeMessage('system', '*', `Connected to ${defaultProvider.name ?? provType} (${model})`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
         this.deps.callbacks.stopThinking(chName);
