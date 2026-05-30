@@ -65,9 +65,8 @@ export interface ISessionState {
   addStickyNote(content: string, position?: 'top' | 'bottom' | 'both'): StickyNote;
   removeStickyNote(idOrIndex: string | number): boolean;
   listStickyNotes(): StickyNote[];
-  buildStickyInjection(): string;
-  buildStickyInjectionTop(): string;
-  buildStickyInjectionBottom(): string;
+  // Note: buildStickyInjection/buildStickyInjectionTop/buildStickyInjectionBottom
+  // moved to ArmamentApp.buildStickyInjectionForChannel(channel) — per-channel stickies.
   addError(component: string, msg: string, err?: unknown): void;
   buildArmadebugInjection(): string;
   addMemory(type: string, content: string): void;
@@ -354,35 +353,6 @@ export class SessionState implements ISessionState {
    */
   listStickyNotes(): StickyNote[] {
     return [...this._stickyNotes];
-  }
-
-  /** Build top and bottom sticky note sections for injection. */
-  buildStickyInjection(): string {
-    return this._buildStickyAt('top', 'bottom');
-  }
-
-  /**
-   * Build sticky injection top.
-   */
-  buildStickyInjectionTop(): string {
-    return this._buildStickyAt('top', 'both');
-  }
-
-  /**
-   * Build sticky injection bottom.
-   */
-  buildStickyInjectionBottom(): string {
-    return this._buildStickyAt('bottom', 'both');
-  }
-
-  private _buildStickyAt(...positions: string[]): string {
-    const notes = this._stickyNotes.filter(n => positions.includes(n.position));
-    if (notes.length === 0) return '';
-    const lines: string[] = [];
-    for (const note of notes) {
-      lines.push(`  📝 ${note.text}`);
-    }
-    return '\n' + lines.join('\n') + '\n';
   }
 
   /**

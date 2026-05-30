@@ -503,8 +503,8 @@ export class ArmamentApp extends ReplPublicAPI {
     return parts.join('\n\n');
   }
 
-  /** Override: build sticky injection for the current channel. */
-  override buildStickyInjection(): string {
+  /** Build sticky injection for the current channel. */
+  buildStickyInjection(): string {
     return this.buildStickyInjectionForChannel(this.activeChannelName || '#general');
   }
 

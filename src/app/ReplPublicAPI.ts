@@ -594,7 +594,6 @@ export abstract class ReplPublicAPI extends BaseRepl {
   /**
    * Build sticky injection.
    */
-  buildStickyInjection(): string { return this._sessionState.buildStickyInjection(); }
 
   /**
    * Add memory.
