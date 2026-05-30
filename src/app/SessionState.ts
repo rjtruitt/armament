@@ -188,7 +188,8 @@ export class SessionState implements ISessionState {
     this._stickyNotes = notes;
     // Ensure counter is past the highest ID (handles restored notes)
     for (const n of notes) {
-      if (n.id && n.id >= this._stickyNoteCounter) {
+      // id can be 0 (legacy) — still need to advance counter past it
+      if (n.id !== undefined && n.id >= this._stickyNoteCounter) {
         this._stickyNoteCounter = n.id + 1;
       }
     }
