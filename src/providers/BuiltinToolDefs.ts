@@ -632,7 +632,18 @@ Use this instead of bash grep when you want structured output you can act on (e.
 export function abortBashProcess(channel: string): void {
   const child = activeBashProcesses.get(channel);
   if (child) {
-    try { child.kill('SIGTERM'); } catch { /* process already dead */ }
+    try {
+      // Kill the entire process group (negative PID) — bash was spawned
+      // with detached:true so it has its own process group. This ensures
+      // child processes (pipes, cat, grep, etc.) are also killed.
+      if (child.pid !== undefined) {
+        process.kill(-child.pid, 'SIGTERM');
+        // Also try direct kill as fallback
+        setTimeout(() => {
+          try { child.kill('SIGKILL'); } catch { /* already dead */ }
+        }, 2000);
+      }
+    } catch { /* process already dead */ }
     activeBashProcesses.delete(channel);
   }
 }
