@@ -8,6 +8,7 @@ import { createA2ATools } from '../a2a/index.js';
 import { logInfo, logError } from '../core/index.js';
 import { getArmaPath, getChannelRoot } from './ChannelPaths.js';
 import { getPermissionStore } from './PermissionStore.js';
+import type { ILLMProvider } from '../providers/ProviderPool.js';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import type { ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
@@ -41,7 +42,7 @@ function cleanupWorkerSandbox(workerId: string, chName: string): void {
  */
 export interface ChannelAgentContext {
   chName: string;
-  adapter: any;
+  adapter: ILLMProvider;
   model: string;
   provType: string;
   providerName?: string;
@@ -49,7 +50,7 @@ export interface ChannelAgentContext {
   taskStore: TaskStore;
   channelAgents: Map<string, IChannelAgent>;
   setScheduleStore: (store: NudgeStore) => void;
-  setRuntime: (chName: string, runtime: any) => void;
+  setRuntime: (chName: string, runtime: import('../a2a/TaskRuntime.js').TaskRuntime) => void;
   persistChannelState: (chName: string) => void;
 }
 

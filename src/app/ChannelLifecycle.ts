@@ -4,10 +4,13 @@ import { getGlobalEventBus } from '../app/EventBus.js';
 import type { IChannelManifestEntry, IChannelStateFile } from '../session/index.js';
 import { ChannelThreadHandle, type ChannelThreadConfig } from '../threads/index.js';
 import { createChannelAgentWithTools } from './ChannelToolRegistration.js';
+import type { ILLMProvider } from '../providers/ProviderPool.js';
+import type { Message } from 'iteratio';
 import { NudgeManager } from './NudgeManager.js';
 import { AutoWorkerManager } from './AutoWorkerManager.js';
 import type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps } from './ChannelLifecycleTypes.js';
 import { UserConfig } from '../config/index.js';
+import type { IProviderConfig } from '../core/interfaces/IProviderConfig.js';
 import { stripAllAnsi } from '../core/stripAnsi.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, readdirSync } from 'fs';
 import { join } from 'path';
@@ -45,7 +48,7 @@ export class ChannelLifecycle {
     });
     // Listen for recurring prompt config changes
     try {
-      getGlobalEventBus().on((event: any) => {
+      getGlobalEventBus().on((event: Record<string, unknown>) => {
         if (event && event.type === 'recurring-prompt:config-changed') {
           this._reloadRecurringPrompts();
         }
@@ -67,7 +70,7 @@ export class ChannelLifecycle {
    */
   private _spawnChannelAgent(
     chName: string,
-    defaultProvider: any,
+    defaultProvider: IProviderConfig | undefined,
     defaultModel: string,
     onSuccess: () => void,
     onError: (err: Error) => void,
@@ -81,7 +84,7 @@ export class ChannelLifecycle {
       const coordinator = this.deps.threadCoordinator!;
       const readyPromise = coordinator.spawnChannel(threadConfig).then(() => {
         const handle = new ChannelThreadHandle(coordinator, chName, model, provType);
-        (handle as any).setWorkspace?.(getChannelRoot(chName) + ':/tmp:/dev');
+        handle.setWorkspace(getChannelRoot(chName) + ':/tmp:/dev');
         this.channelAgents.set(chName, handle as unknown as ChannelAgent);
         onSuccess();
       }).catch(onError);
@@ -288,10 +291,10 @@ export class ChannelLifecycle {
   }
 
   /** Build a thread config for a channel. */
-  private buildThreadConfig(chName: string, provType: string, model: string, provider: any): ChannelThreadConfig {
+  private buildThreadConfig(chName: string, provType: string, model: string, provider: IProviderConfig | undefined): ChannelThreadConfig {
     return {
       channelName: chName,
-      provider: { type: provType, model, region: provider.region, profile: provider.profile, apiKey: provider.apiKey, baseUrl: provider.baseUrl, streaming: provider.streaming },
+      provider: { type: provType, model, region: provider?.region, profile: provider?.profile, apiKey: provider?.apiKey, baseUrl: provider?.baseUrl, streaming: provider?.streaming },
       systemPrompt: this.deps.config.systemPrompt,
       maxTurns: this.deps.config.session?.maxTurns ?? 100,
       workerMaxTurns: this.deps.config.session?.workerMaxTurns ?? 250,
@@ -496,7 +499,7 @@ export class ChannelLifecycle {
       messages.unshift({
         role: 'system',
         content: `[Rolling dropoff — dropped ${drop} oldest messages to 4500]`,
-      } as any);
+      });
     }
 
     const bareName = channelName.startsWith('#') ? channelName.slice(1) : channelName;
@@ -511,7 +514,7 @@ export class ChannelLifecycle {
 
     const state: IChannelStateFile = {
       channelName,
-      messages: messages.map((m: any, i: number) => ({
+      messages: messages.map((m: Message, i: number) => ({
         id: `msg-${i}`,
         role: m.role,
         content: typeof m.content === 'string' ? stripAllAnsi(m.content).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '') : JSON.stringify(m.content),
@@ -565,7 +568,8 @@ export class ChannelLifecycle {
           id: 'msg-dropoff',
           role: 'system',
           content: `[Rolling dropoff — earlier messages trimmed to stay under ${MAX_LOADED_MESSAGES}]`,
-        } as any;
+          timestamp: Date.now(),
+        };
       }
       agent.importSession({
         messages: loadMsgs.map(m => ({
@@ -619,7 +623,7 @@ export class ChannelLifecycle {
     const provType = newProvider ?? existingAgent.providerType;
     const uc = UserConfig.instance();
     const providerList = uc.providers?.length ? uc.providers : this.deps.config.providers;
-    const provConfig = providerList?.find((p: any) => (p.name ?? p.type) === provType);
+    const provConfig = providerList?.find((p: IProviderConfig) => (p.name ?? p.type) === provType);
     if (!provConfig) {
       this.deps.callbacks.writeMessage('system', 'error', `Provider "${provType}" not configured`, channelName);
       return;
@@ -628,7 +632,7 @@ export class ChannelLifecycle {
     const sessionState = existingAgent.exportSession();
     // Strip any ANSI codes from messages before importing into new agent
     if (sessionState.messages) {
-      sessionState.messages = sessionState.messages.map((m: any) => ({
+      sessionState.messages = sessionState.messages.map((m: Message) => ({
         ...m,
         content: typeof m.content === 'string' ? stripAllAnsi(m.content) : m.content,
       }));
@@ -670,7 +674,7 @@ export class ChannelLifecycle {
   }
 
   /** Create a ChannelAgent with all standard tools and callbacks wired. */
-  private createChannelAgent(chName: string, adapter: any, model: string, provType: string, providerName?: string): ChannelAgent {
+  private createChannelAgent(chName: string, adapter: ILLMProvider, model: string, provType: string, providerName?: string): ChannelAgent {
     return createChannelAgentWithTools({
       chName,
       adapter,
