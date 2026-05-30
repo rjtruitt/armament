@@ -8,6 +8,6 @@ export { getSetrootCommand } from './setroot.js';
 export { getNudgeCommands } from './nudge.js';
 export { getGodModeCommand } from './godmode.js';
 export { getPromptCommand, getSpawnCommand } from './worker.js';
-
+export { getPasteCommand } from './paste.js';
 export { getHelpCommand } from './help.js';
 export { getRefreshCommand } from './refresh.js';

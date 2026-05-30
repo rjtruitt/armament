@@ -329,16 +329,16 @@ export class ChannelAgent implements IChannelAgent {
   }
 
   /** Sends a user message and runs the full tool loop until a final response. */
-  async sendMessage(input: string): Promise<string> {
+  async sendMessage(input: string | Record<string, unknown>[]): Promise<string> {
     this._turnCount++;
     this._status = 'thinking';
     this._config.onTurnStart?.(this._turnCount);
 
-    const augmented = this.applyStickies(input);
+    const augmented = Array.isArray(input) ? input : this.applyStickies(input);
 
     try {
       sanitizeOrphanedToolCalls(this._loop.getMessageManager());
-      const response = await this._loop.runTurn(augmented, this._config.maxTurns);
+      const response = await this._loop.runTurn(augmented as string, this._config.maxTurns);
 
       const mm = this._loop.getMessageManager();
       mm.takeSnapshot();
@@ -364,13 +364,13 @@ export class ChannelAgent implements IChannelAgent {
   }
 
   /** Streaming variant of sendMessage; yields incremental text, tool events, and a final 'done'. */
-  async *sendMessageStreaming(input: string, onToolCall?: (name: string, args: unknown) => void): AsyncGenerator<StreamEvent> {
+  async *sendMessageStreaming(input: string | Record<string, unknown>[], onToolCall?: (name: string, args: unknown) => void): AsyncGenerator<StreamEvent> {
     this._turnCount++;
     this._interrupted = false;
     this._status = 'thinking';
     this._config.onTurnStart?.(this._turnCount);
 
-    const augmented = this.applyStickies(input);
+    const augmented = Array.isArray(input) ? input : this.applyStickies(input);
 
     const state = {
       turnCount: this._turnCount,

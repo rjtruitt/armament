@@ -266,7 +266,7 @@ export async function* runStreamingLoop(
   loop: IAgentLoop,
   config: StreamingConfig,
   state: StreamingState,
-  augmentedInput: string,
+  augmentedInput: string | Record<string, unknown>[],
   onToolCall: ((name: string, args: unknown) => void) | undefined,
   runPostCompact: (result: CompactionResult, mm: IMessageManager) => Promise<void>,
 ): AsyncGenerator<StreamEvent> {
@@ -279,7 +279,7 @@ export async function* runStreamingLoop(
   };
 
   if (!provider.invokeStream) {
-    const response = await loop.runTurn(augmentedInput, config.maxTurns);
+    const response = await loop.runTurn(typeof augmentedInput === 'string' ? augmentedInput : '', config.maxTurns);
     yield { type: 'text', text: response };
     yield { type: 'done' };
     return;
@@ -288,8 +288,7 @@ export async function* runStreamingLoop(
   try {
     const mm = loop.getMessageManager();
     sanitizeOrphanedToolCalls(mm);
-    mm.addMessage({ role: 'user', content: augmentedInput });
-
+    mm.addMessage({ role: 'user', content: augmentedInput } as any);
     const maxIterations = config.maxTurns ?? 200;
     const MAX_SILENT_RETRIES = 3;
     let silentRetries = 0;

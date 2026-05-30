@@ -66,7 +66,7 @@ export class StreamRouter {
    * Route.
    */
   async route(
-    agent: ChannelAgent, input: string, target: OutputTarget, interrupted?: () => boolean,
+    agent: ChannelAgent, input: string | Record<string, unknown>[], target: OutputTarget, interrupted?: () => boolean,
   ): Promise<string> {
     const tui = this.deps.getTui();
     const mode = target.render ?? 'full';
@@ -81,7 +81,7 @@ export class StreamRouter {
   /**
    * Route async.
    */
-  routeAsync(agent: ChannelAgent, input: string, target: OutputTarget): void {
+  routeAsync(agent: ChannelAgent, input: string | Record<string, unknown>[], target: OutputTarget): void {
     this.route(agent, input, target).catch((err: unknown) => {
       const tui = this.deps.getTui();
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -92,22 +92,23 @@ export class StreamRouter {
 
   /** @deprecated Use route() with render mode. Kept for existing callers. */
   async routeStream(
-    agent: ChannelAgent, input: string, target: OutputTarget, interrupted?: () => boolean,
+    agent: ChannelAgent, input: string | Record<string, unknown>[], target: OutputTarget, interrupted?: () => boolean,
   ): Promise<string> {
     return this.route(agent, input, { ...target, render: 'full' }, interrupted);
   }
 
   /** @deprecated Use route() with render:'silent'. Kept for existing callers. */
-  async routeSync(agent: ChannelAgent, input: string, target: OutputTarget): Promise<string> {
+  async routeSync(agent: ChannelAgent, input: string | Record<string, unknown>[], target: OutputTarget): Promise<string> {
     return this.route(agent, input, { ...target, render: 'silent' });
   }
 
   private async routeNonStreaming(
-    agent: ChannelAgent, input: string, target: OutputTarget, tui: TuiRenderer | null,
+    agent: ChannelAgent, input: string | Record<string, unknown>[], target: OutputTarget, tui: TuiRenderer | null,
   ): Promise<string> {
     const bus = getGlobalEventBus();
-    bus.emit({ type: 'message', channel: target.channel, message: { role: 'user', content: input, timestamp: Date.now() } });
-    const response = await agent.sendMessage(input);
+    const content = Array.isArray(input) ? input : input;
+    bus.emit({ type: 'message', channel: target.channel, message: { role: 'user', content, timestamp: Date.now() } });
+    const response = await agent.sendMessage(content);
     if (response && tui && target.render !== 'silent') {
       tui?.writeMessage('agent', target.nick, response, target.channel);
     }
@@ -118,7 +119,7 @@ export class StreamRouter {
 
   private async runStreamLoop(
     agent: ChannelAgent,
-    input: string,
+    input: string | Record<string, unknown>[],
     target: OutputTarget,
     tui: TuiRenderer | null,
     mode: 'full' | 'tools-only',
@@ -131,7 +132,8 @@ export class StreamRouter {
     let inToolCall = false;
 
     const bus = getGlobalEventBus();
-    bus.emit({ type: 'message', channel: target.channel, message: { role: 'user', content: input, timestamp: Date.now() } });
+    const content = Array.isArray(input) ? input : input;
+    bus.emit({ type: 'message', channel: target.channel, message: { role: 'user', content, timestamp: Date.now() } });
 
     tui?.startThinking(target.channel);
 

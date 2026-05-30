@@ -11,7 +11,8 @@ function safeParseJSON(raw: string): unknown {
 /** Normalized message format used by the adapter layer. */
 export interface SimpleMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
+  /** Content can be a plain string or an array of content blocks (for multi-modal). */
+  content: string | Record<string, unknown>[];
   name?: string;
   tool_call_id?: string;
   tool_calls?: { id: string; name: string; arguments: string }[];
@@ -102,7 +103,12 @@ export class ModelToLLMAdapter implements ILLMProvider {
       const content: Record<string, unknown>[] = [];
 
       if (m.content && m.role !== 'tool') {
-        content.push({ type: 'text' as const, text: m.content });
+        if (Array.isArray(m.content)) {
+          // Already content blocks (e.g. multi-modal: text + image)
+          content.push(...m.content as Record<string, unknown>[]);
+        } else {
+          content.push({ type: 'text' as const, text: m.content });
+        }
       }
 
       if (m.role === 'assistant' && m.reasoning) {
@@ -234,7 +240,12 @@ export class ModelToLLMAdapter implements ILLMProvider {
     const rawMessages = messages.map(m => {
       const content: Record<string, unknown>[] = [];
       if (m.content && m.role !== 'tool') {
-        content.push({ type: 'text' as const, text: m.content });
+        if (Array.isArray(m.content)) {
+          // Already content blocks (e.g. multi-modal: text + image)
+          content.push(...m.content as Record<string, unknown>[]);
+        } else {
+          content.push({ type: 'text' as const, text: m.content });
+        }
       }
       if (m.role === 'assistant' && m.reasoning) {
         content.push({ type: 'thinking' as const, thinking: m.reasoning });
