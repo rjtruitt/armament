@@ -519,25 +519,12 @@ describe('ArmamentApp - Standard Slash Commands', () => {
     expect(repl.handleCommand('/undo')).toBe(true);
   });
 
-  it('should handle /retry command', () => {
-    expect(repl.handleCommand('/retry')).toBe(true);
-  });
-
   it('should handle /save command', () => {
     expect(repl.handleCommand('/save')).toBe(true);
   });
 
   it('should handle /load command', () => {
     expect(repl.handleCommand('/load')).toBe(true);
-  });
-
-  it('should handle /plan command', () => {
-    const output = repl.handleCommandWithOutput('/plan');
-    expect(output).toBeDefined();
-  });
-
-  it('should handle /run command', () => {
-    expect(repl.handleCommand('/run echo hello')).toBe(true);
   });
 
   it('should handle /compact command', () => {
@@ -691,12 +678,6 @@ describe('ArmamentApp - Multi-Turn Conversation', () => {
     await repl.handleUserMessage('undo me');
     repl.handleCommand('/undo');
     expect(repl.getTurnCount()).toBe(0);
-  });
-
-  it('should support /retry to re-send last message', async () => {
-    await repl.handleUserMessage('retry this');
-    repl.handleCommand('/retry');
-    expect(repl.getLastUserMessage()).toBe('retry this');
   });
 
   it('should include system prompt in message history', () => {

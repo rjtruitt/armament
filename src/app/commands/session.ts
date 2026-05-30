@@ -126,21 +126,6 @@ export function getSessionCommands(): CommandRegistration[] {
       },
     },
     {
-      name: 'retry',
-      description: 'Retry last message',
-      handler: (_args, _ctx) => ({ handled: true }),
-    },
-    {
-      name: 'plan',
-      description: 'Show current plan',
-      handler: (_args, _ctx) => ({ handled: true, output: 'Plan: 0 steps' }),
-    },
-    {
-      name: 'run',
-      description: 'Run a command',
-      handler: (_args, _ctx) => ({ handled: true }),
-    },
-    {
       name: 'compact',
       aliases: ['compress'],
       description: 'Compact context window (onPostCompact writes the result message)',

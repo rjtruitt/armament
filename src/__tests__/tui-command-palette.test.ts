@@ -590,9 +590,9 @@ describe('CommandPalette', () => {
       expect(ircCommands.length).toBe(12);
     });
 
-    it('standard commands should have correct count (29)', () => {
+    it('standard commands should have correct count (26)', () => {
       const stdCommands = palette.getCommandsByCategory('standard');
-      expect(stdCommands.length).toBe(29);
+      expect(stdCommands.length).toBe(26);
     });
 
     it('all categories should sum to total commands', () => {
