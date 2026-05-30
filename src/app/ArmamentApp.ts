@@ -680,6 +680,7 @@ export class ArmamentApp extends ReplPublicAPI {
       buildStickyInjection: () => this.buildStickyInjection(),
       buildStickyInjectionTop: () => this.buildStickyInjection(),
       buildStickyInjectionBottom: () => this._sessionState.buildStickyInjectionBottom(),
+      buildArmadebugInjection: () => this._sessionState.buildArmadebugInjection(),
       getChannelNotes: (channel) => this._channelLifecycle.getChannelNotes(channel),
       getAgentNick: () => this.getAgentNick(),
       getTui: () => this.tuiMode,

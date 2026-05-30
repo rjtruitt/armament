@@ -485,6 +485,7 @@ export class TuiConfigPanes {
       'session.scribeIntervalEnabled.value': 'session.scribeIntervalEnabled',
       'session.scribeIntervalMinutes.value': 'session.scribeIntervalMinutes',
       'session.historyScribeModel.value': 'session.historyScribeModel',
+      'session.armadebug.value': 'session.armadebug',
       'session.driftMaxSize.value': 'drift.maxSizeBytes',
       // History pane paths (map history.* to session.*)
       'history.recurringPromptEnabled.value': 'session.recurringPromptEnabled',

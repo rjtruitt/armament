@@ -35,6 +35,7 @@ export interface SessionSettings {
   scribeIntervalEnabled: boolean;
   scribeIntervalMinutes: number;
   historyScribeModel: string;
+  armadebug?: boolean;
 }
 
 /** Context window settings. */
@@ -132,6 +133,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     scribeIntervalEnabled: false,
     scribeIntervalMinutes: 60,
     historyScribeModel: '',
+    armadebug: false,
   },
   context: {
     maxTokens: 200000,

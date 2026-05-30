@@ -26,6 +26,7 @@ export interface StreamRouterDeps {
   getUserNick: () => string;
   getInputQueue: () => (string | { text: string; channel: string })[];
   onPostStream?: (agent: ChannelAgent, channel: string) => void;
+  onError?: (component: string, msg: string, err?: unknown) => void;
 }
 
 /**
@@ -295,9 +296,10 @@ export class StreamRouter {
       }
     }
   } catch (err: unknown) {
-    // Generator error — log and re-throw for the caller's try/catch
+    // Generator error — log to #errors channel, store in debug buffer, and re-throw
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[StreamRouter] Stream error on ${target.channel}: ${errMsg}`);
+    tui?.writeMessage('system', 'err', `Stream error on ${target.channel}: ${errMsg}`, '#errors');
+    this.deps.onError?.('stream', `Stream error on ${target.channel}`, err);
     throw err;
   } finally {
     // ALWAYS clear thinking indicator, no matter how the loop exits

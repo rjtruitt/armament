@@ -224,6 +224,7 @@ export function registerHistorySchemas(pane: ConfigPane): void {
       { id: 'scribeIntervalMinutes', status: (s.historyScribeEnabled && s.scribeIntervalEnabled) ? 'active' : 'inactive', cells: { setting: '    Timer Interval (min)', value: `${s.scribeIntervalMinutes}m`, type: 'text', description: 'How often to run timer-based scribe' } },
       { id: 'historyScribeMaxMessages', status: s.historyScribeEnabled ? 'active' : 'inactive', cells: { setting: '  Max Messages', value: String(s.historyScribeMaxMessages), type: 'number', description: '0 = all messages, N = last N messages' } },
       { id: 'historyScribeModel', status: s.historyScribeEnabled ? 'active' : 'inactive', cells: { setting: '  Scribe Model', value: s.historyScribeModel || '(default)', type: 'choice', description: 'Model for scribe worker. Left/right arrow to cycle. (default) = use channel model.' } },
+      { id: 'armadebug', status: 'active', cells: { setting: 'Arma Debug', value: s.armadebug ? 'on' : 'off', type: 'toggle', description: 'Inject full stack traces of errors into LLM context' } },
     ],
     sortColumn: undefined,
     sortAsc: false,

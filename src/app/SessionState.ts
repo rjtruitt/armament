@@ -67,7 +67,8 @@ export interface ISessionState {
   buildStickyInjection(): string;
   buildStickyInjectionTop(): string;
   buildStickyInjectionBottom(): string;
-
+  addError(component: string, msg: string, err?: unknown): void;
+  buildArmadebugInjection(): string;
   addMemory(type: string, content: string): void;
   getMemories(type?: string): MemoryEntry[];
   getPersistedMemories(): string;
@@ -106,6 +107,8 @@ export class SessionState implements ISessionState {
   private _contextCapacity: number;
   private _budgetWarningSent = false;
   private _costByModel: Map<string, { cost: number; inputTokens: number; outputTokens: number }> = new Map();
+  /** Rotating error buffer for armadebug mode — last 20 errors. */
+  private _errorBuffer: string[] = [];
 
   constructor(config: SessionConfig = {}) {
     this._contextCapacity = config.contextCapacity ?? 200000;
@@ -382,8 +385,33 @@ export class SessionState implements ISessionState {
   }
 
   /**
-   * Add memory.
+   * Add an error to the rotating buffer. Stores full stack trace.
    */
+  addError(component: string, msg: string, err?: unknown): void {
+    const ts = new Date().toLocaleTimeString();
+    let detail = msg;
+    if (err instanceof Error) {
+      detail += `\n${err.stack || err.message}`;
+    } else if (err) {
+      detail += `\n${String(err)}`;
+    }
+    this._errorBuffer.push(`[${ts}] ${component}: ${detail}`);
+    // Keep last 20
+    if (this._errorBuffer.length > 20) {
+      this._errorBuffer = this._errorBuffer.slice(-20);
+    }
+  }
+
+  /**
+   * Build armadebug injection — only if session setting `armadebug` is on.
+   * Full stack traces for LLM consumption.
+   */
+  buildArmadebugInjection(): string {
+    const { UserConfig } = require('../config/UserConfig.js');
+    const settings = UserConfig.instance().settings.session;
+    if (!settings || !settings.armadebug || this._errorBuffer.length === 0) return '';
+    return `── arma debug ──────────────────\nThe following errors have occurred this session (${this._errorBuffer.length}):\n${this._errorBuffer.join('\n')}\n─────────────────────────────────\n`;
+  }
   addMemory(type: string, content: string): void {
     this._memories.push({ type, content, timestamp: Date.now() });
   }

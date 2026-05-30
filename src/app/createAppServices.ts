@@ -290,6 +290,7 @@ export function createAppServices(
       if (host.onPostStream) host.onPostStream(agent, channel);
       channelLifecycle.persistChannelState(channel);
     },
+    onError: (component, msg, err) => sessionState.addError(component, msg, err),
   });
 
   const agentServices = new AgentServices({

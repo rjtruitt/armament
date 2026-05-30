@@ -37,6 +37,7 @@ export interface MessageHandlerDeps {
   buildStickyInjection: () => string;
   buildStickyInjectionTop: () => string;
   buildStickyInjectionBottom: () => string;
+  buildArmadebugInjection: () => string;
   getChannelNotes: (channel: string) => string;
   getAgentNick: () => string;
   getTui: () => TuiRenderer | null;
@@ -106,7 +107,8 @@ export async function handleUserMessage(
       const notesPrefix = deps.getChannelNotes(activeChannel);
       const stickyPre = deps.buildStickyInjectionTop();
       const stickyPost = deps.buildStickyInjectionBottom();
-      const augmentedInput = `${notesPrefix}${stickyPre}[USER MESSAGE]\n${input}${stickyPost}`;
+      const armadebug = deps.buildArmadebugInjection();
+      const augmentedInput = `${notesPrefix}${stickyPre}${armadebug}[USER MESSAGE]\n${input}${stickyPost}`;
       const nick = deps.getAgentNick();
       await deps.getStreamRouter().routeStream(agent, augmentedInput, { channel: activeChannel, nick }, () => deps.getInterrupted(activeChannel));
       deps.setProcessing(activeChannel, false);
