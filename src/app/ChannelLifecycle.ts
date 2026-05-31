@@ -16,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSyn
 import { join } from 'path';
 import { getArmaPath, getNotesPath, getArchDir, armaDataDir, getChannelRoot } from './ChannelPaths.js';
 import { ScheduledPrompt } from './ScheduledPrompt.js';
+import { IteratioSidecar } from './IteratioSidecar.js';
 export type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps };
 
 /**
@@ -35,6 +36,8 @@ export class ChannelLifecycle {
   private _recurringPrompts = new Map<string, ScheduledPrompt>();
   /** Per-channel auto-worker manager (refactor, jsdoc, test-builder, etc.). */
   private _autoWorkerManager: AutoWorkerManager;
+  /** Go engine sidecar for LLM calls — one process for all channels. */
+  private _sidecar: IteratioSidecar | null = null;
 
   constructor(deps: ChannelLifecycleDeps) {
     this.deps = deps;
@@ -701,6 +704,18 @@ export class ChannelLifecycle {
 
   /** Create a ChannelAgent with all standard tools and callbacks wired. */
   private createChannelAgent(chName: string, adapter: ILLMProvider, model: string, provType: string, providerName?: string): ChannelAgent {
+    // Lazily start Go engine on first channel creation
+    if (!this._sidecar) {
+      this._sidecar = new IteratioSidecar();
+      this._sidecar.start().then((ok) => {
+        if (ok) {
+          this.deps.callbacks.writeMessage('system', 'iteratio-sidecar', '✓ iteratio sidecar started', '#armament');
+        } else {
+          this.deps.callbacks.writeMessage('system', 'iteratio-sidecar', '✗ iteratio sidecar unavailable — using TS provider directly', '#armament');
+          this._sidecar = null;
+        }
+      });
+    }
     return createChannelAgentWithTools({
       chName,
       adapter,
@@ -713,6 +728,7 @@ export class ChannelLifecycle {
       setScheduleStore: (store) => { this._nudgeManager.registerStore(chName, store); },
       setRuntime: (name, runtime) => { this.channelRuntimes.set(name, runtime); },
       persistChannelState: (name) => { this.persistChannelState(name); },
+      goEngine: this._sidecar,
     });
   }
 

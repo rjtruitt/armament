@@ -52,6 +52,8 @@ export interface ChannelAgentContext {
   setScheduleStore: (store: NudgeStore) => void;
   setRuntime: (chName: string, runtime: import('../a2a/TaskRuntime.js').TaskRuntime) => void;
   persistChannelState: (chName: string) => void;
+  /** Optional Go engine for LLM calls with TS fallback. */
+  goEngine?: import('../providers/ChannelAgent.js').ChannelAgentConfig['goEngine'];
 }
 
 /**
@@ -393,6 +395,10 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
         }
       }
       // No TUI buffer manipulation — rolling dropoff in persistChannelState handles state file growth
+    },
+    goEngine: ctx.goEngine ?? null,
+    onGoFallback: (error: string) => {
+      deps.callbacks.writeMessage('system', 'iteratio-fallback', `⟳ iteratio sidecar fallback → TS: ${error}`, '#armament');
     },
   });
 
