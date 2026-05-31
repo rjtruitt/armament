@@ -536,7 +536,7 @@ export class ChannelLifecycle {
       })),
       agentConfig: {
         model: agent.model,
-        provider: agent.providerType,
+        provider: agent.providerName ?? agent.providerType,
         tools: this.deps.getActiveToolNames(),
       },
       turnCount: agent.turnCount,
@@ -641,7 +641,14 @@ export class ChannelLifecycle {
     const provType = newProvider ?? existingAgent.providerType;
     const uc = UserConfig.instance();
     const providerList = uc.providers?.length ? uc.providers : this.deps.config.providers;
-    const provConfig = providerList?.find((p: IProviderConfig) => (p.name ?? p.type) === provType);
+    // Try matching by name first (e.g. "deepseek"), then fall back to type ("openai").
+    // This supports both: new state files storing providerName, and old state files
+    // storing the driver type. Custom-named providers like {name:'deepseek',type:'openai'}
+    // need name-based lookup.
+    let provConfig = providerList?.find((p: IProviderConfig) => p.name === provType);
+    if (!provConfig) {
+      provConfig = providerList?.find((p: IProviderConfig) => p.type === provType);
+    }
     if (!provConfig) {
       this.deps.callbacks.writeMessage('system', 'error', `Provider "${provType}" not configured`, channelName);
       return;
