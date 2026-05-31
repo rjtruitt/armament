@@ -222,10 +222,16 @@ async function executeOneTool(
   const tool = loop.getTool(tc.name);
   let result: ToolResult;
   if (tool) {
-    try {
-      result = await tool.execute(args, { turnNumber: state.turnCount, state: {}, metadata: {} });
-    } catch (e: unknown) {
-      result = { success: false, error: { message: e instanceof Error ? e.message : String(e), code: 'TOOL_ERROR' } };
+    // Check interrupt flag just before executing — gives the interrupt handler
+    // a chance to stop a tool from even starting (e.g. bash).
+    if (config.isInterrupted?.()) {
+      result = { success: false, error: { message: 'Interrupted.', code: 'INTERRUPTED' } };
+    } else {
+      try {
+        result = await tool.execute(args, { turnNumber: state.turnCount, state: {}, metadata: {} });
+      } catch (e: unknown) {
+        result = { success: false, error: { message: e instanceof Error ? e.message : String(e), code: 'TOOL_ERROR' } };
+      }
     }
   } else {
     result = { success: false, error: { message: `Tool not found: ${tc.name}`, code: 'NOT_FOUND' } };
@@ -371,6 +377,11 @@ export async function* runStreamingLoop(
       let hitTerminal = false;
       const toolResults: Array<{ tc: typeof toolCalls[0]; result: ToolResult; durationMs: number }> = [];
       for (const tc of toolCalls) {
+        // Check interrupt BEFORE executing each tool — long-running tools (bash)
+        // can take minutes, and the for-await loop above only checks between
+        // stream chunks, not between tool executions.
+        if (config.isInterrupted?.()) break;
+
         const executed = await executeOneTool(tc, loop, state, config, onToolCall);
         config.onToolResult?.(tc.name, executed.args, executed.result, executed.durationMs);
         yield { type: 'tool_result' as const, toolName: tc.name, toolCall: tc, result: executed.result, durationMs: executed.durationMs };

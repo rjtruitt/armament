@@ -808,7 +808,7 @@ export class ArmamentApp extends ReplPublicAPI {
    */
   async handleUserMessage(input: string): Promise<string | void> {
     return doHandleUserMessage(input, {
-      getInterrupted: () => { const ch = this.activeChannelName; return (ch ? this.getChannelState(ch).interrupted : false) || this.interrupted; },
+      getInterrupted: (channel: string) => this.getChannelState(channel || this.activeChannelName || '').interrupted || this.interrupted,
       getTurnCount: () => this.turnCount,
       setTurnCount: (n) => { this.turnCount = n; },
       getConfig: () => this.config,
