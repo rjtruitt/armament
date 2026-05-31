@@ -5,13 +5,11 @@ import { registerConfigPanelSchemas } from './TuiConfigSchemas.js';
 import { getGlobalEventBus } from './EventBus.js';
 import type { IProviderConfig } from '../core/index.js';
 import type { MenuPanel, ListRow } from '../tui/ConfigPane.js';
-import {
-  registerSessionSchemas,
-  registerContextSchemas,
-  registerWorkspaceSchemas,
-  registerDisplaySchemas,
-  registerHistorySchemas,
-} from './TuiConfigSchemasExt.js';
+import { registerSessionSchemas } from './config/SessionSchemas.js';
+import { registerContextSchemas } from './config/ContextSchemas.js';
+import { registerWorkspaceSchemas } from './config/WorkspaceSchemas.js';
+import { registerDisplaySchemas } from './config/DisplaySchemas.js';
+import { registerHistorySchemas } from './config/HistorySchemas.js';
 import type { TuiRendererOptions } from './TuiTypes.js';
 
 /**
