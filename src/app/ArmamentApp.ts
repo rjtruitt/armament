@@ -320,31 +320,15 @@ export class ArmamentApp extends ReplPublicAPI {
   }
 
 
-  /** Handle Ctrl+C interrupt. Stops the current agent turn cleanly.
-   *  Targets the FIRST channel that's actively processing (regardless of
-   *  which channel the user is viewing). Falls back to the viewed channel
-   *  if nothing is processing, and to the singleton for test compat. */
+  /** Handle Ctrl+C interrupt. Stops the current agent turn cleanly. */
   interrupt(): void {
+    const ch = this.activeChannelName;
     // Always set singleton flags (needed by tests and wasInterrupted())
     this.interrupted = true;
     this.interruptCount++;
     this.emitEvent('interrupt', {});
-
-    // Find which channel to interrupt — prefer one that's actually processing.
-    // If the user switches channels mid-bash, activeChannelName is wrong.
-    let target = this.activeChannelName;
-    if (target) {
-      const viewedState = this.getChannelState(target);
-      if (!viewedState.processing) {
-        // Viewed channel isn't processing — find one that is
-        for (const [ch, s] of this._channelStates) {
-          if (s.processing) { target = ch; break; }
-        }
-      }
-    }
-
-    const ch = target;
     if (!ch) {
+      // No active channel — use singleton counters for double-escape
       if (this.interruptCount >= 2 && !this.processing) this.running = false;
       return;
     }
@@ -395,7 +379,7 @@ export class ArmamentApp extends ReplPublicAPI {
       }
       resolveChannelApproval(text, channel, this._inputProcessorDeps());
       if (this.tuiMode) this.tuiMode.writeMessage('user', this.getUserNick(), text, channel);
-      const response = await this.handleUserMessage(text, channel);
+      const response = await this.handleUserMessage(text);
       if (response) {
         if (this.tuiMode) this.tuiMode.writeMessage('agent', this.getAgentNick(), response, channel);
         else process.stdout.write(response + '\n');
@@ -821,17 +805,14 @@ export class ArmamentApp extends ReplPublicAPI {
 
   /**
    * Handle user message.
-   * @param channel — the channel the message was sent from. If omitted, falls
-   *   back to this.activeChannelName for backward compat (tests, repl).
    */
-  async handleUserMessage(input: string, channel?: string): Promise<string | void> {
-    const activeChannel = channel || this.activeChannelName || '#control';
+  async handleUserMessage(input: string): Promise<string | void> {
     return doHandleUserMessage(input, {
-      getInterrupted: (ch: string) => this.getChannelState(ch || activeChannel).interrupted || this.interrupted,
+      getInterrupted: (channel: string) => this.getChannelState(channel || this.activeChannelName || '').interrupted || this.interrupted,
       getTurnCount: () => this.turnCount,
       setTurnCount: (n) => { this.turnCount = n; },
       getConfig: () => this.config,
-      getActiveChannelName: () => activeChannel,
+      getActiveChannelName: () => this.activeChannelName,
       getChannelManagerInternal: () => this.channelManagerInternal,
       joinChannel: (name) => this.joinChannel(name),
       getActiveChannelNameAfterJoin: () => this.activeChannelName,
@@ -843,15 +824,12 @@ export class ArmamentApp extends ReplPublicAPI {
       getUsageStats: () => this.usageStats,
       getCurrentModel: () => this.getCurrentModel(),
       getActiveProvider: () => this.getActiveProvider(),
-      buildStickyInjection: (c) => this.buildStickyInjectionForChannel(c),
-      buildStickyInjectionTop: (c) => this.buildStickyInjectionForChannel(c),
-      buildStickyInjectionBottom: (c) => this.buildStickyInjectionForChannel(c),
+      buildStickyInjection: (channel) => this.buildStickyInjectionForChannel(channel),
+      buildStickyInjectionTop: (channel) => this.buildStickyInjectionForChannel(channel),
+      buildStickyInjectionBottom: (channel) => this.buildStickyInjectionForChannel(channel),
       buildArmadebugInjection: () => this._sessionState.buildArmadebugInjection(),
-      getChannelNotes: (c) => this._channelLifecycle.getChannelNotes(c),
-      getAgentNick: () => {
-        const ch = activeChannel;
-        return ch.startsWith('#') ? ch.slice(1) : ch;
-      },
+      getChannelNotes: (channel) => this._channelLifecycle.getChannelNotes(channel),
+      getAgentNick: () => this.getAgentNick(),
       getTui: () => this.tuiMode,
       setProcessing: (channel: string, state: boolean) => { this.getChannelState(channel).processing = state; },
       setLastUserMsg: (msg) => { this.lastUserMsg = msg; },

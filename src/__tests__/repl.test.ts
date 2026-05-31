@@ -862,7 +862,7 @@ describe('ArmamentApp - Input Handling', () => {
   it('should treat non-slash input as user message', async () => {
     const spy = vi.spyOn(repl, 'handleUserMessage');
     await repl.handleInput('hello');
-    expect(spy).toHaveBeenCalledWith('hello', expect.any(String));
+    expect(spy).toHaveBeenCalledWith('hello');
   });
 });
 
