@@ -52,8 +52,8 @@ export interface ChannelAgentContext {
   setScheduleStore: (store: NudgeStore) => void;
   setRuntime: (chName: string, runtime: import('../a2a/TaskRuntime.js').TaskRuntime) => void;
   persistChannelState: (chName: string) => void;
-  /** Optional Go engine for LLM calls with TS fallback. */
-  goEngine?: import('../providers/ChannelAgent.js').ChannelAgentConfig['goEngine'];
+  /** Optional Go sidecar for LLM calls with TS fallback. */
+  goEngine?: import('../app/IteratioSidecar.js').IteratioSidecar | null;
 }
 
 /**
@@ -296,6 +296,34 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     onExitPlan: (_id, plan) => deps.callbacks.writeMessage('system', 'plan', plan, chName),
   });
 
+  const agentTools = [
+    ...getDefaultTools({
+      onWriteComplete: async (reason, toolName, filePath) => {
+        // Auto-snapshot after each write/edit/append
+        try {
+          await deps.driftManager.snapshot(chName, filePath, reason, toolName);
+        } catch {}
+      },
+      providerPool: deps.providerPool,
+    }),
+    askTool,
+    todoTool,
+    ...a2aResult.tools,
+    ...taskTools,
+    ...nudgeResult.tools,
+    ...planTools,
+    ...createDriftTools(deps.driftManager, chName),
+    new ReadChannelTool(),
+    ...createCrossChannelTools(channelAgents, chName),
+    ...deps.mcpManager.getConnectedMcpITools(),
+    deps.catalogManager.createRequestTool((newTools) => {
+      if (newTools.length > 0) agent.registerTools(newTools);
+      deps.setActiveToolNames(deps.catalogManager.activeToolNames);
+      deps.callbacks.writeMessage('system', 'info',
+        `Loaded ${newTools.length} tool(s) into context`, '#logs');
+    }),
+  ];
+
   const agent = new ChannelAgent({
     name: chName,
     provider: adapter,
@@ -303,33 +331,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     providerType: provType,
     providerName: ctx.providerName,
     modelOptions,
-    tools: [
-      ...getDefaultTools({
-        onWriteComplete: async (reason, toolName, filePath) => {
-          // Auto-snapshot after each write/edit/append
-          try {
-            await deps.driftManager.snapshot(chName, filePath, reason, toolName);
-          } catch {}
-        },
-        providerPool: deps.providerPool,
-      }),
-      askTool,
-      todoTool,
-      ...a2aResult.tools,
-      ...taskTools,
-      ...nudgeResult.tools,
-      ...planTools,
-      ...createDriftTools(deps.driftManager, chName),
-      new ReadChannelTool(),
-      ...createCrossChannelTools(channelAgents, chName),
-      ...deps.mcpManager.getConnectedMcpITools(),
-      deps.catalogManager.createRequestTool((newTools) => {
-        if (newTools.length > 0) agent.registerTools(newTools);
-        deps.setActiveToolNames(deps.catalogManager.activeToolNames);
-        deps.callbacks.writeMessage('system', 'info',
-          `Loaded ${newTools.length} tool(s) into context`, '#logs');
-      }),
-    ],
+    tools: agentTools,
     onTurnStart: (_turnNumber: number) => {
       deps.callbacks.startThinking(chName);
       deps.callbacks.updateAgentStatus(chName, 'thinking');
@@ -396,6 +398,8 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
       }
       // No TUI buffer manipulation — rolling dropoff in persistChannelState handles state file growth
     },
+    getToolNames: () => agentTools.map(t => t.name),
+    getCwd: () => getChannelRoot(chName),
     goEngine: ctx.goEngine ?? null,
     onGoFallback: (error: string) => {
       deps.callbacks.writeMessage('system', 'iteratio-fallback', `⟳ iteratio sidecar fallback → TS: ${error}`, '#armament');

@@ -355,6 +355,7 @@ export class ArmamentApp extends ReplPublicAPI {
     if (this._threadCoordinator) this._threadCoordinator.interrupt(ch);
     abortBashProcess(ch);
     this._channelAgents.get(ch)?.interrupt();
+    this._channelLifecycle.interruptSidecar(ch); // Go sidecar
     this.tuiMode?.stopThinking(ch);
     this.tuiMode?.writeMessage('system', '*', '── interrupted ──', ch);
     // Double-escape exits

@@ -9,7 +9,7 @@ import { extractNick } from './ProviderPool.js';
 import { UserConfig } from '../config/index.js';
 import { runStreamingLoop, sanitizeOrphanedToolCalls } from './ChannelAgentStreaming.js';
 import type { StreamEvent } from './ChannelAgentStreaming.js';
-import type { IteratioSidecar } from '../app/IteratioSidecar.js';
+import type { IteratioSidecar, SidecarChunk } from '../app/IteratioSidecar.js';
 
 export type { StreamEvent } from './ChannelAgentStreaming.js';
 export type { StickyPosition, StickyNote } from '../core/index.js';
@@ -21,6 +21,12 @@ export interface ChannelAgentConfig extends IChannelAgentConfig {
   goEngine?: IteratioSidecar | null;
   /** Called when Go sidecar fails and we fall back to TS. */
   onGoFallback?: (error: string) => void;
+  /** Returns active tool names for the sidecar request. */
+  getToolNames?: () => string[];
+  /** Returns the channel workspace directory for sidecar tool execution. */
+  getCwd?: () => string;
+  /** Returns the system context to inject (notes.md, stickies, armadebug). */
+  getSystemContext?: () => string;
 }
 
 /** Per-channel agent wrapping an iteratio AgentLoop with streaming, compaction, and file tracking. */
@@ -369,7 +375,7 @@ export class ChannelAgent implements IChannelAgent {
   }
 
   /** Streaming variant of sendMessage; yields incremental text, tool events, and a final 'done'.
-   *  If a Go engine is configured, tries it first; falls back to TS on any failure. */
+   *  If Go sidecar is available, delegates to it; falls back to TS on any failure. */
   async *sendMessageStreaming(input: string | Record<string, unknown>[], onToolCall?: (name: string, args: unknown) => void): AsyncGenerator<StreamEvent> {
     this._turnCount++;
     this._interrupted = false;
@@ -377,38 +383,78 @@ export class ChannelAgent implements IChannelAgent {
     this._config.onTurnStart?.(this._turnCount);
 
     const augmented = Array.isArray(input) ? input : this.applyStickies(input);
-    const inputStr = Array.isArray(augmented) ? JSON.stringify(augmented) : augmented;
+    const inputStr = Array.isArray(augmented) ? JSON.stringify(augmented) : augmented as string;
 
     // ── Try iteratio sidecar first ────────────────────────────────────
     const goEngine = this._config.goEngine;
-    if (goEngine) {
+    if (goEngine?.ready) {
       try {
-        const messages = extractMessagesForEngine(inputStr);
-        const result = await goEngine.send({
-          messages,
+        const { text: cleanText, system: systemContext } = extractUserTextAndSystem(inputStr);
+        const tools = this._config.getToolNames?.() ?? [];
+        goEngine.send({
+          type: 'message',
+          text: cleanText,
+          tools,
           provider: this._config.providerType,
           model: this._config.model,
+          cwd: this._config.getCwd?.() ?? undefined,
+          system: systemContext || (this._config.getSystemContext?.() ?? undefined),
         });
-        if (!result.error && result.text) {
-          // Split text into chunks to simulate streaming
-          const chunkSize = 500;
-          for (let i = 0; i < result.text.length; i += chunkSize) {
-            yield { type: 'text', text: result.text.slice(i, i + chunkSize) };
+
+        // Pull chunks from sidecar via event→promise queue
+        let done = false;
+        let sidecarError = '';
+        const chunkQueue: SidecarChunk[] = [];
+        let wakeup: (() => void) | null = null;
+        const onChunk = (c: SidecarChunk) => { chunkQueue.push(c); wakeup?.(); };
+        const onExit = () => { done = true; sidecarError = sidecarError || 'sidecar exited'; wakeup?.(); };
+
+        goEngine.on('chunk', onChunk);
+        goEngine.on('exit', onExit);
+
+        try {
+          while (!done) {
+            // Drain queue
+            while (chunkQueue.length > 0) {
+              const c = chunkQueue.shift()!;
+              if (c.type === 'done') {
+                if (c.usage) {
+                  this._totalTokens += c.usage.totalTokens;
+                  this._cacheRead += c.usage.cacheReadTokens;
+                  this._cacheWrite += c.usage.cacheWriteTokens;
+                }
+                done = true;
+                yield { type: 'done' };
+                break;
+              }
+              if (c.type === 'error') {
+                sidecarError = c.error ?? 'sidecar error';
+                done = true;
+                break;
+              }
+              yield sidecarChunkToStreamEvent(c);
+              if (c.type === 'tool_call' && onToolCall && c.name) {
+                onToolCall(c.name, c.args ?? {});
+              }
+            }
+            if (done) break;
+            // Wait for next chunk
+            if (chunkQueue.length === 0 && !done) {
+              await new Promise<void>(r => { wakeup = r; });
+            }
           }
-          if (result.usage) {
-            this._totalTokens += result.usage.totalTokens;
-            this._cacheRead += result.usage.cacheReadTokens;
-            this._cacheWrite += result.usage.cacheWriteTokens;
-          }
+        } finally {
+          goEngine.off('chunk', onChunk);
+          goEngine.off('exit', onExit);
+        }
+
+        if (!sidecarError) {
           this._status = 'idle';
-          this._config.onTurnComplete?.(this._turnCount, result.text);
-          yield { type: 'done' };
+          this._config.onTurnComplete?.(this._turnCount, '');
           return;
         }
-        // Go returned an error — fall through to TS
-        if (result.error) {
-          this._config.onGoFallback?.(result.error);
-        }
+        // Sidecar failed — fall through to TS
+        this._config.onGoFallback?.(sidecarError);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         this._config.onGoFallback?.(msg);
@@ -546,12 +592,37 @@ export class ChannelAgent implements IChannelAgent {
   }
 }
 
-/** Extract a simple messages array for the Go engine from augmented input.
- *  Strips sticky/notes/armadebug prefixes to get clean user message. */
-function extractMessagesForEngine(input: string): Array<{ role: string; content: string }> {
-  // The augmented input has notes, stickies, armadebug, then "[USER MESSAGE]\nactual text"
+/** Extract clean user text from the augmented input (notes, stickies, armadebug, then "[USER MESSAGE]\nactual text"). */
+/** Extract clean user text and system context from augmented input. */
+function extractUserTextAndSystem(input: string): { text: string; system: string } {
   const marker = '[USER MESSAGE]';
   const idx = input.lastIndexOf(marker);
-  const clean = idx >= 0 ? input.slice(idx + marker.length).trim() : input.trim();
-  return [{ role: 'user', content: clean }];
+  if (idx >= 0) {
+    const system = input.slice(0, idx).trim();
+    const text = input.slice(idx + marker.length).trim();
+    return { text, system };
+  }
+  return { text: input.trim(), system: '' };
+}
+
+function extractUserText(input: string): string {
+  return extractUserTextAndSystem(input).text;
+}
+
+/** Convert a sidecar chunk to a StreamEvent for the existing TUI rendering pipeline. */
+function sidecarChunkToStreamEvent(c: SidecarChunk): StreamEvent {
+  switch (c.type) {
+    case 'text':
+      return { type: 'text', text: c.text };
+    case 'thinking':
+      return { type: 'thinking', text: c.text };
+    case 'tool_call':
+      return { type: 'tool_call', toolCall: { id: c.id, name: c.name, arguments: c.args ? JSON.stringify(c.args) : undefined } };
+    case 'tool_result':
+      return { type: 'tool_result', result: { success: true, data: c.content }, toolName: c.toolName };
+    case 'done':
+      return { type: 'done' };
+    case 'error':
+      return { type: 'text', text: `[sidecar error] ${c.error}` };
+  }
 }

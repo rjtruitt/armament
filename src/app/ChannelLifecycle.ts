@@ -16,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSyn
 import { join } from 'path';
 import { getArmaPath, getNotesPath, getArchDir, armaDataDir, getChannelRoot } from './ChannelPaths.js';
 import { ScheduledPrompt } from './ScheduledPrompt.js';
+import { IteratioSidecar } from './IteratioSidecar.js';
 export type { ChannelInfo, AgentInfo, ChannelLifecycleCallbacks, ChannelLifecycleDeps };
 
 /**
@@ -39,6 +40,8 @@ export class ChannelLifecycle {
   private _lastUserInput = new Map<string, number>();
   /** Minutes of user inactivity before nudges stop firing. */
   private _maxIdleMinutes = 15;
+  /** Per-channel Go sidecar instances (spawned on join, killed on leave). */
+  private _sidecars = new Map<string, IteratioSidecar>();
 
   constructor(deps: ChannelLifecycleDeps) {
     this.deps = deps;
@@ -462,6 +465,7 @@ export class ChannelLifecycle {
     this._recurringPrompts.get(name)?.stop();
     this._recurringPrompts.delete(name);
     this._autoWorkerManager.stopChannel(name);
+    this._stopSidecar(name);
 
     const runtime = this.channelRuntimes.get(name);
     if (runtime) {
@@ -721,6 +725,14 @@ export class ChannelLifecycle {
 
   /** Create a ChannelAgent with all standard tools and callbacks wired. */
   private createChannelAgent(chName: string, adapter: ILLMProvider, model: string, provType: string, providerName?: string): ChannelAgent {
+    // Start Go sidecar for this channel (best-effort, fails silently if binary missing)
+    let sidecar = this._sidecars.get(chName);
+    if (!sidecar) {
+      sidecar = new IteratioSidecar();
+      sidecar.start().catch(() => {});
+      this._sidecars.set(chName, sidecar);
+    }
+
     return createChannelAgentWithTools({
       chName,
       adapter,
@@ -733,7 +745,19 @@ export class ChannelLifecycle {
       setScheduleStore: (store) => { this._nudgeManager.registerStore(chName, store); },
       setRuntime: (name, runtime) => { this.channelRuntimes.set(name, runtime); },
       persistChannelState: (name) => { this.persistChannelState(name); },
+      goEngine: sidecar,
     });
+  }
+
+  /** Kill the Go sidecar for a channel. */
+  private _stopSidecar(chName: string): void {
+    const sc = this._sidecars.get(chName);
+    if (sc) { sc.stop(); this._sidecars.delete(chName); }
+  }
+
+  /** Send interrupt to Go sidecar for a channel (best-effort). */
+  interruptSidecar(chName: string): void {
+    this._sidecars.get(chName)?.interrupt();
   }
 
   /**
