@@ -826,6 +826,8 @@ export class ArmamentApp extends ReplPublicAPI {
    */
   async handleUserMessage(input: string, channel?: string): Promise<string | void> {
     const activeChannel = channel || this.activeChannelName || '#control';
+    // Mark real user input so nudges respect idle timeout
+    this._channelLifecycle.markUserInput(activeChannel);
     return doHandleUserMessage(input, {
       getInterrupted: (ch: string) => this.getChannelState(ch || activeChannel).interrupted || this.interrupted,
       getTurnCount: () => this.turnCount,
