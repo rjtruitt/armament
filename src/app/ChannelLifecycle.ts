@@ -62,6 +62,15 @@ export class ChannelLifecycle {
   /** Public accessor for the NudgeManager (used by /nudge REPL command via CommandContext). */
   getNudgeManager(): NudgeManager { return this._nudgeManager; }
 
+  /** Resolve the default provider config and model from UserConfig, with fallback to deps config. */
+  private _resolveDefaultProvider(): { provider: IProviderConfig | undefined; model: string } {
+    const uc = UserConfig.instance();
+    return {
+      provider: uc.providers?.[0] ?? this.deps.config.providers?.[0],
+      model: uc.defaultModel || this.deps.config.defaultModel,
+    };
+  }
+
   /**
    * Spawn a channel agent (threaded or non-threaded) and register it.
    * Shared by both joinChannel and spawnChannelBackground.
@@ -342,10 +351,8 @@ export class ChannelLifecycle {
     this.ensureChannelNotes(name);
 
     const chName = name;
-    const uc = UserConfig.instance();
     const useThreads = this.deps.config.session?.useThreads && this.deps.threadCoordinator;
-    const defaultProvider = uc.providers?.[0] ?? this.deps.config.providers?.[0];
-    const defaultModel = uc.defaultModel || this.deps.config.defaultModel;
+    const { provider: defaultProvider, model: defaultModel } = this._resolveDefaultProvider();
 
     this._spawnChannelAgent(chName, defaultProvider, defaultModel,
       () => {
@@ -383,9 +390,7 @@ export class ChannelLifecycle {
     this.deps.callbacks.addChannel(chName);
     this.ensureChannelNotes(chName);
 
-    const uc = UserConfig.instance();
-    const defaultProvider = uc.providers?.[0] ?? this.deps.config.providers?.[0];
-    const defaultModel = uc.defaultModel || this.deps.config.defaultModel;
+    const { provider: defaultProvider, model: defaultModel } = this._resolveDefaultProvider();
 
     this._spawnChannelAgent(chName, defaultProvider, defaultModel,
       () => {
