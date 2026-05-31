@@ -395,7 +395,7 @@ export class ChannelAgent implements IChannelAgent {
           type: 'message',
           text: cleanText,
           tools,
-          provider: this._config.providerType,
+          provider: this._config.providerName ?? this._config.providerType,
           model: this._config.model,
           cwd: this._config.getCwd?.() ?? undefined,
           system: systemContext || (this._config.getSystemContext?.() ?? undefined),

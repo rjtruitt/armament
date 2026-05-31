@@ -383,7 +383,7 @@ export class ChannelLifecycle {
         this._setupChannelNudges(chName);
         this.deps.refreshProviderStats();
         const agent = this.channelAgents.get(chName);
-        const label = agent ? `${agent.providerType}/${agent.model}` : '?';
+        const label = agent ? `${agent.providerName ?? agent.providerType}/${agent.model}` : '?';
         const prefix = useThreads ? `${label} [threaded]` : `${label}`;
         this.deps.callbacks.writeMessage('system', '*', `Connected to ${prefix}`);
         this.deps.callbacks.writeMessage('system', '*', `Joined ${chName}`);
