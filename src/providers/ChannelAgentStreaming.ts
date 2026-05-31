@@ -252,7 +252,7 @@ function addToolResults(
       : rawContent;
     mm.addMessage({
       role: 'tool',
-      content: JSON.stringify(safeContent),
+      content: (typeof safeContent === 'string' ? safeContent : JSON.stringify(safeContent)) || '',
       tool_call_id: tc.id,
     });
   }

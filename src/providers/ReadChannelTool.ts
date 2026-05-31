@@ -127,8 +127,28 @@ and optionally the full message history (may be large).`;
       for (let i = 0; i < fullMsgs.length; i++) {
         const m = fullMsgs[i];
         const role = m.role ?? '?';
-        const content = typeof m.content === 'string' ? m.content.slice(0, 300) : JSON.stringify(m.content).slice(0, 300);
         const extra = m.tool_call_id ? ` [tc:${m.tool_call_id}]` : m.tool_calls ? ` [${m.tool_calls.length} tool_calls]` : '';
+        // If content is a JSON array of content blocks (from persist), extract text portions
+        if (typeof m.content === 'string') {
+          const trimmed = m.content.trim();
+          if (trimmed.startsWith('[')) {
+            try {
+              const blocks = JSON.parse(trimmed);
+              if (Array.isArray(blocks)) {
+                const texts = blocks
+                  .filter((b: Record<string, unknown>) => b.type === 'text' || b.type === 'thinking')
+                  .map((b: Record<string, unknown>) => (b.text ?? b.thinking ?? '') as string)
+                  .join(' ')
+                  .slice(0, 300);
+                if (texts) {
+                  output.push(`[${i}] ${role}${extra}: ${texts}`);
+                  continue;
+                }
+              }
+            } catch { /* fall through */ }
+          }
+        }
+        const content = typeof m.content === 'string' ? m.content.slice(0, 300) : JSON.stringify(m.content).slice(0, 300);
         output.push(`[${i}] ${role}${extra}: ${content}`);
       }
     }

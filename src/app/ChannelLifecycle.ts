@@ -576,14 +576,27 @@ export class ChannelLifecycle {
           timestamp: Date.now(),
         };
       }
+      // Try to restore array content (e.g. thinking blocks, multi-modal) that was
+      // JSON.stringify'd during persist. If content looks like a JSON array, parse it.
+      const safeContent = (raw: string): string | Record<string, unknown>[] => {
+        const cleaned = stripAllAnsi(raw).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+        const trimmed = cleaned.trim();
+        if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) return parsed;
+          } catch { /* not JSON — use as string */ }
+        }
+        return cleaned;
+      };
       agent.importSession({
         messages: loadMsgs.map(m => ({
           role: m.role as 'user' | 'assistant' | 'system' | 'tool',
-          content: stripAllAnsi(m.content).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ''),
+          content: safeContent(m.content),
           ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
           ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
         })),
-      });
+      } as any);
     }
 
     // Restore the channel's model/provider from state if it differs from default
