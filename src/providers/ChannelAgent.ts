@@ -9,6 +9,7 @@ import { extractNick } from './ProviderPool.js';
 import { UserConfig } from '../config/index.js';
 import { runStreamingLoop, sanitizeOrphanedToolCalls } from './ChannelAgentStreaming.js';
 import type { StreamEvent } from './ChannelAgentStreaming.js';
+import type { GoEngineAdapter } from '../app/GoEngineAdapter.js';
 
 export type { StreamEvent } from './ChannelAgentStreaming.js';
 export type { StickyPosition, StickyNote } from '../core/index.js';
@@ -16,6 +17,10 @@ export type { StickyPosition, StickyNote } from '../core/index.js';
 /** Full configuration for a ChannelAgent instance including callbacks. */
 export interface ChannelAgentConfig extends IChannelAgentConfig {
   onUsage?: (usage: UsageData) => void;
+  /** Optional Go engine for non-streaming LLM calls with TS fallback. */
+  goEngine?: GoEngineAdapter | null;
+  /** Called when Go engine fails and we fall back to TS. */
+  onGoFallback?: (error: string) => void;
 }
 
 /** Per-channel agent wrapping an iteratio AgentLoop with streaming, compaction, and file tracking. */
@@ -363,7 +368,8 @@ export class ChannelAgent implements IChannelAgent {
     }
   }
 
-  /** Streaming variant of sendMessage; yields incremental text, tool events, and a final 'done'. */
+  /** Streaming variant of sendMessage; yields incremental text, tool events, and a final 'done'.
+   *  If a Go engine is configured, tries it first; falls back to TS on any failure. */
   async *sendMessageStreaming(input: string | Record<string, unknown>[], onToolCall?: (name: string, args: unknown) => void): AsyncGenerator<StreamEvent> {
     this._turnCount++;
     this._interrupted = false;
@@ -371,6 +377,44 @@ export class ChannelAgent implements IChannelAgent {
     this._config.onTurnStart?.(this._turnCount);
 
     const augmented = Array.isArray(input) ? input : this.applyStickies(input);
+    const inputStr = Array.isArray(augmented) ? JSON.stringify(augmented) : augmented;
+
+    // ── Try Go engine first ──────────────────────────────────────────
+    const goEngine = this._config.goEngine;
+    if (goEngine) {
+      try {
+        const messages = extractMessagesForEngine(inputStr);
+        const result = await goEngine.send({
+          messages,
+          provider: this._config.providerType,
+          model: this._config.model,
+        });
+        if (!result.error && result.text) {
+          // Split text into chunks to simulate streaming
+          const chunkSize = 500;
+          for (let i = 0; i < result.text.length; i += chunkSize) {
+            yield { type: 'text', text: result.text.slice(i, i + chunkSize) };
+          }
+          if (result.usage) {
+            this._totalTokens += result.usage.totalTokens;
+            this._cacheRead += result.usage.cacheReadTokens;
+            this._cacheWrite += result.usage.cacheWriteTokens;
+          }
+          this._status = 'idle';
+          this._config.onTurnComplete?.(this._turnCount, result.text);
+          yield { type: 'done' };
+          return;
+        }
+        // Go returned an error — fall through to TS
+        if (result.error) {
+          this._config.onGoFallback?.(result.error);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this._config.onGoFallback?.(msg);
+      }
+    }
+    // ── Fall back to TS streaming ────────────────────────────────────
 
     const state = {
       turnCount: this._turnCount,
@@ -500,4 +544,14 @@ export class ChannelAgent implements IChannelAgent {
       await this._config.onPostCompact(result, summary);
     }
   }
+}
+
+/** Extract a simple messages array for the Go engine from augmented input.
+ *  Strips sticky/notes/armadebug prefixes to get clean user message. */
+function extractMessagesForEngine(input: string): Array<{ role: string; content: string }> {
+  // The augmented input has notes, stickies, armadebug, then "[USER MESSAGE]\nactual text"
+  const marker = '[USER MESSAGE]';
+  const idx = input.lastIndexOf(marker);
+  const clean = idx >= 0 ? input.slice(idx + marker.length).trim() : input.trim();
+  return [{ role: 'user', content: clean }];
 }
