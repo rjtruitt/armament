@@ -9,7 +9,7 @@ import { extractNick } from './ProviderPool.js';
 import { UserConfig } from '../config/index.js';
 import { runStreamingLoop, sanitizeOrphanedToolCalls } from './ChannelAgentStreaming.js';
 import type { StreamEvent } from './ChannelAgentStreaming.js';
-import type { GoEngineAdapter } from '../app/GoEngineAdapter.js';
+import type { IteratioSidecar } from '../app/IteratioSidecar.js';
 
 export type { StreamEvent } from './ChannelAgentStreaming.js';
 export type { StickyPosition, StickyNote } from '../core/index.js';
@@ -17,9 +17,9 @@ export type { StickyPosition, StickyNote } from '../core/index.js';
 /** Full configuration for a ChannelAgent instance including callbacks. */
 export interface ChannelAgentConfig extends IChannelAgentConfig {
   onUsage?: (usage: UsageData) => void;
-  /** Optional Go engine for non-streaming LLM calls with TS fallback. */
-  goEngine?: GoEngineAdapter | null;
-  /** Called when Go engine fails and we fall back to TS. */
+  /** Optional Go sidecar for LLM calls with TS fallback. */
+  goEngine?: IteratioSidecar | null;
+  /** Called when Go sidecar fails and we fall back to TS. */
   onGoFallback?: (error: string) => void;
 }
 
@@ -379,7 +379,7 @@ export class ChannelAgent implements IChannelAgent {
     const augmented = Array.isArray(input) ? input : this.applyStickies(input);
     const inputStr = Array.isArray(augmented) ? JSON.stringify(augmented) : augmented;
 
-    // ── Try Go engine first ──────────────────────────────────────────
+    // ── Try iteratio sidecar first ────────────────────────────────────
     const goEngine = this._config.goEngine;
     if (goEngine) {
       try {

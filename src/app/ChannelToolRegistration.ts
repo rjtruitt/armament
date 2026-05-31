@@ -398,7 +398,7 @@ export function createChannelAgentWithTools(ctx: ChannelAgentContext): ChannelAg
     },
     goEngine: ctx.goEngine ?? null,
     onGoFallback: (error: string) => {
-      deps.callbacks.writeMessage('system', 'go-fallback', `⟳ Go engine fallback → TS: ${error}`, '#armament');
+      deps.callbacks.writeMessage('system', 'iteratio-fallback', `⟳ iteratio sidecar fallback → TS: ${error}`, '#armament');
     },
   });
 
