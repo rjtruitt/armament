@@ -80,6 +80,7 @@ export async function handleUserMessage(
   deps.setTurnCount(newTurn);
   deps.setLastUserMsg(input);
   deps.setProcessing(activeChannel, true);
+  deps.getTui()?.startThinking(activeChannel);
 
   if (deps.getProviderPool().size === 0 && !DebugMode.instance().isActive()) {
     deps.setProcessing(activeChannel, false);
@@ -131,6 +132,7 @@ export async function handleUserMessage(
   }
 
   try {
+    deps.getTui()?.stopThinking(activeChannel);
     const result = handleDebugMessage(input, newTurn, activeChannel, {
       getSessionState: () => deps.getSessionState(),
       getUsageStats: () => deps.getUsageStats(),
