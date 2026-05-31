@@ -51,6 +51,7 @@ export interface TuiWiringDeps {
   buildCommandContext: () => import('./CommandDispatch.js').CommandContext;
   /** Internal reference set by ArmamentApp after TUI creation — used by MCP callbacks to write messages. */
   _tuiRef?: TuiMode;
+  restoreStickyNotes: (stickyNotes: Record<string, string[]>) => void;
 }
 
 /**
@@ -256,6 +257,10 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
 
   const manifest = await deps.sessionPersistence.loadManifest();
   if (manifest) {
+    // Restore per-channel sticky notes from manifest
+    if (manifest.stickyNotes) {
+      deps.restoreStickyNotes(manifest.stickyNotes);
+    }
     // Sticky notes are now per-channel — global stickies from old manifests are dropped.
     let restoredTools: ITool[] = [];
     if (manifest.activeTools) {

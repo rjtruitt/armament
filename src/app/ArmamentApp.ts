@@ -254,6 +254,7 @@ export class ArmamentApp extends ReplPublicAPI {
       getChannelStatus: (channel) => this._getChannelStatus(channel),
       getCommandDispatch: () => this._commandDispatch,
       buildCommandContext: () => this._buildCommandContext(),
+      restoreStickyNotes: (stickyNotes) => this.restoreStickyNotes(stickyNotes),
     };
   }
 
@@ -511,6 +512,27 @@ export class ArmamentApp extends ReplPublicAPI {
   /** Build sticky injection for the current channel. */
   buildStickyInjection(): string {
     return this.buildStickyInjectionForChannel(this.activeChannelName || '#general');
+  }
+
+  /** Restore sticky notes from manifest data on startup. */
+  restoreStickyNotes(stickyNotes: Record<string, string[]>): void {
+    for (const [ch, entries] of Object.entries(stickyNotes)) {
+      const stickies: Array<{ id: number; text: string; position: 'top' | 'bottom' | 'both' }> = [];
+      let maxId = 0;
+      for (const entry of entries) {
+        const parts = entry.split(':');
+        const id = parseInt(parts[0], 10);
+        const position = (parts[1] as 'top' | 'bottom' | 'both') || 'top';
+        const text = parts.slice(2).join(':');
+        if (isNaN(id)) continue;
+        stickies.push({ id, text, position });
+        if (id > maxId) maxId = id;
+      }
+      if (stickies.length > 0) {
+        this._channelStickies.set(ch, stickies);
+        this._channelStickyId.set(ch, maxId);
+      }
+    }
   }
 
 
