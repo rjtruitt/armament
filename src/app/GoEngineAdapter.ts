@@ -19,7 +19,7 @@ import { resolve } from 'node:path';
 
 const GO_BINARY = resolve(
   process.env.HOME!,
-  'Documents/AiLegoPieces/godev/iteratio-engine/iteratio-engine',
+  'Documents/AiLegoPieces/godev/iteratio-go/engine',
 );
 
 interface StreamChunk {
