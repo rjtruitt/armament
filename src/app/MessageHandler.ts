@@ -111,6 +111,9 @@ export async function handleUserMessage(
       const armadebug = deps.buildArmadebugInjection();
       const augmentedInput = `${notesPrefix}${stickyPre}${armadebug}[USER MESSAGE]\n${input}${stickyPost}`;
       const nick = deps.getAgentNick();
+      // If user interrupted before the LLM call, bail out — the LLM hasn't
+      // received the request yet. interrupt() already called stopThinking.
+      if (deps.getInterrupted(activeChannel)) return undefined;
       await deps.getStreamRouter().routeStream(agent, augmentedInput, { channel: activeChannel, nick }, () => deps.getInterrupted(activeChannel));
       deps.setProcessing(activeChannel, false);
       return undefined;
