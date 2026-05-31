@@ -311,8 +311,19 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
   }
 
   // Prune orphaned channel dirs — removes dirs for channels that no longer exist
-  const activeChannelNames = manifest
-    ? manifest.channels.map(ch => ch.name)
-    : deps.getChannelManagerInternal().map(ch => ch.name);
-  pruneOrphanedChannelDirs(activeChannelNames);
+  // Build active channel names from ALL sources: manifest, saved state files on disk,
+  // and channel manager. A channel may have state files on disk but not be in the
+  // manifest (e.g. if it was joined after the last manifest save). Excluding those
+  // from the active list would cause their directories to be deleted.
+  const activeChannelNames = new Set<string>();
+  if (manifest) {
+    for (const ch of manifest.channels) activeChannelNames.add(ch.name);
+  }
+  for (const slug of deps.sessionPersistence.listChannels()) {
+    activeChannelNames.add(slug.startsWith('#') ? slug : `#${slug}`);
+  }
+  for (const ch of deps.getChannelManagerInternal()) {
+    activeChannelNames.add(ch.name);
+  }
+  pruneOrphanedChannelDirs([...activeChannelNames]);
 }
