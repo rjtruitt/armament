@@ -28,6 +28,7 @@ import {
 } from './AppMonitoring.js';
 import type { ChannelStatus } from './TuiTypes.js';
 import { handleUserMessage as doHandleUserMessage } from './MessageHandler.js';
+import { pruneOrphanedChannelDirs } from './ChannelPaths.js';
 
 /**
  * Armament app class.
@@ -303,6 +304,8 @@ export class ArmamentApp extends ReplPublicAPI {
         ),
         activeTools: this._activeToolNames,
       }).catch(() => {});
+      // Prune orphaned channel dirs after saving manifest
+      pruneOrphanedChannelDirs(this.channelManagerInternal.map(ch => ch.name));
     }
 
     this._services.completionManager.shutdown();

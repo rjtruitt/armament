@@ -307,6 +307,10 @@ export class TuiRenderer {
    */
   addChannel(name: string): void { this.channelView.addChannel(name); }
   /**
+   * Check if a channel is open.
+   */
+  hasChannel(name: string): boolean { return this.sidebar.hasChannel(name); }
+  /**
    * Create new channel.
    */
   createNewChannel(): void { this.channelView.createNewChannel(); }

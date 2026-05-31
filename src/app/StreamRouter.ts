@@ -1,6 +1,7 @@
 import type { ChannelAgent } from '../providers/index.js';
 import type { TuiRenderer } from './TuiRenderer.js';
 import { getGlobalEventBus } from './EventBus.js';
+import { UserConfig } from '../config/UserConfig.js';
 
 /**
  * RenderMode type definition.
@@ -298,10 +299,13 @@ export class StreamRouter {
       }
     }
   } catch (err: unknown) {
-    // Generator error — log to #errors channel, store in debug buffer, and re-throw
+    // Generator error — log to #errors + #armament, store in debug buffer, and re-throw
     const errMsg = err instanceof Error ? err.message : String(err);
     tui?.writeMessage('system', 'err', `Stream error on ${target.channel}: ${errMsg}`, '#errors');
     tui?.writeMessage('system', 'err', `Stream error: ${errMsg}`, target.channel);
+    if (UserConfig.instance().settings.session?.armadebug && tui?.hasChannel('#armament')) {
+      tui?.writeMessage('system', 'err', `Stream error on ${target.channel}: ${errMsg}`, '#armament');
+    }
     this.deps.onError?.('stream', `Stream error on ${target.channel}`, err);
     throw err;
   } finally {

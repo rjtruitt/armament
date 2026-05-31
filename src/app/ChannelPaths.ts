@@ -11,7 +11,7 @@
  * Override the data dir via ARMAMENT_ARMA env variable.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -111,4 +111,36 @@ export function setChannelRoot(channel: string, rootPath: string): void {
   writeFileSync(armarootPath(channel), rootPath.trim() + '\n', 'utf-8');
   // Ensure target .armaws/ exists
   mkdirSync(join(rootPath.trim(), ARMAWS_DIR), { recursive: true });
+}
+
+/**
+ * Prune orphaned channel directories — removes any channel dir under ~/.arma/channels/
+ * that is NOT in the active channel list AND does NOT have a custom .armaroot.
+ * Call on startup (after restoring session) and on quit.
+ */
+export function pruneOrphanedChannelDirs(activeChannels: string[]): void {
+  const baseDir = armaDataDir();
+  const channelsDir = join(baseDir, 'channels');
+  if (!existsSync(channelsDir)) return;
+
+  for (const entry of readdirSync(channelsDir)) {
+    const fullPath = join(channelsDir, entry);
+    // Check if this is a directory (we can't stat-lite here, just skip non-dirs)
+    let children: string[];
+    try { children = readdirSync(fullPath); } catch { continue; }
+
+    // Skip channels with .armaroot (custom workspace) — never touch those
+    if (children.includes('.armaroot')) continue;
+
+    // Skip active channels
+    const channelName = entry.startsWith('#') ? entry : `#${entry}`;
+    if (activeChannels.includes(channelName)) continue;
+    if (activeChannels.includes(entry)) continue;
+
+    // Safety: don't delete directories with 10+ files — likely has real content
+    if (children.length >= 10) continue;
+
+    // Orphaned — remove it
+    rmSync(fullPath, { recursive: true, force: true });
+  }
 }

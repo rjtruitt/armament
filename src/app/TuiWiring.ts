@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { homedir } from 'node:os';
 import { getPermissionStore } from "./PermissionStore.js";
 import { UserConfig } from '../config/index.js';
+import { pruneOrphanedChannelDirs } from './ChannelPaths.js';
 import { logInfo, type IReplConfig } from '../core/index.js';
 import { TuiRenderer as TuiMode } from './TuiRenderer.js';
 import type { ProviderPool, CatalogManager, AskUserHandler, ChannelAgent } from '../providers/index.js';
@@ -308,4 +309,10 @@ export async function restoreSession(tui: TuiMode, deps: TuiWiringDeps): Promise
       }
     }
   }
+
+  // Prune orphaned channel dirs — removes dirs for channels that no longer exist
+  const activeChannelNames = manifest
+    ? manifest.channels.map(ch => ch.name)
+    : deps.getChannelManagerInternal().map(ch => ch.name);
+  pruneOrphanedChannelDirs(activeChannelNames);
 }
